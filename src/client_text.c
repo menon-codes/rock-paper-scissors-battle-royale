@@ -1,36 +1,37 @@
 #include "protocol.h"
 
-#include <arpa/inet.h>
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/select.h>
-#include <sys/socket.h>
-#include <unistd.h>
 
 #ifndef PORT
 #define PORT 4242
 #endif
 
-static void fatal(const char *msg) {
+static void fatal(const char *msg)
+{
     perror(msg);
     exit(1);
 }
 
-static int prompt_choice(char *out_choice) {
+static int prompt_choice(char *out_choice)
+{
     char buf[64];
 
-    while (1) {
+    while (1)
+    {
         printf("Enter R, P, or S: ");
         fflush(stdout);
 
-        if (!fgets(buf, sizeof(buf), stdin)) {
+        if (!fgets(buf, sizeof(buf), stdin))
+        {
             return 0;
         }
 
         char c = (char)toupper((unsigned char)buf[0]);
-        if (c == 'R' || c == 'P' || c == 'S') {
+        if (c == 'R' || c == 'P' || c == 'S')
+        {
             *out_choice = c;
             return 1;
         }
@@ -39,19 +40,23 @@ static int prompt_choice(char *out_choice) {
     }
 }
 
-static int prompt_int(const char *prompt, int *out_value) {
+static int prompt_int(const char *prompt, int *out_value)
+{
     char buf[64];
     int value;
 
-    while (1) {
+    while (1)
+    {
         printf("%s", prompt);
         fflush(stdout);
 
-        if (!fgets(buf, sizeof(buf), stdin)) {
+        if (!fgets(buf, sizeof(buf), stdin))
+        {
             return 0;
         }
 
-        if (sscanf(buf, "%d", &value) == 1) {
+        if (sscanf(buf, "%d", &value) == 1)
+        {
             *out_value = value;
             return 1;
         }
@@ -60,24 +65,30 @@ static int prompt_int(const char *prompt, int *out_value) {
     }
 }
 
-static int prompt_join_inputs(char *choice, int *spawn_x, int *spawn_y) {
-    if (!prompt_choice(choice)) {
+static int prompt_join_inputs(char *choice, int *spawn_x, int *spawn_y)
+{
+    if (!prompt_choice(choice))
+    {
         return 0;
     }
-    if (!prompt_int("Enter x-coordinate of spawn: ", spawn_x)) {
+    if (!prompt_int("Enter x-coordinate of spawn: ", spawn_x))
+    {
         return 0;
     }
-    if (!prompt_int("Enter y-coordinate of spawn: ", spawn_y)) {
+    if (!prompt_int("Enter y-coordinate of spawn: ", spawn_y))
+    {
         return 0;
     }
     return 1;
 }
 
-static void send_join_attempt(int fd) {
+static void send_join_attempt(socket_t fd)
+{
     char choice;
     int spawn_x, spawn_y;
 
-    if (!prompt_join_inputs(&choice, &spawn_x, &spawn_y)) {
+    if (!prompt_join_inputs(&choice, &spawn_x, &spawn_y))
+    {
         printf("Join cancelled.\n");
         return;
     }
@@ -88,26 +99,34 @@ static void send_join_attempt(int fd) {
     printf("Sent join attempt: choice=%c spawn=(%d,%d)\n", choice, spawn_x, spawn_y);
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv)
+{
     const char *host = "127.0.0.1";
     const char *name = "player";
 
-    if (argc >= 2) {
+    if (argc >= 2)
+    {
         name = argv[1];
     }
 
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (fd < 0) fatal("socket");
+    if (net_init() != 0)
+        fatal("WSAStartup");
+
+    socket_t fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd == INVALID_SOCKET)
+        fatal("socket");
 
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
     addr.sin_port = htons(PORT);
 
-    if (inet_pton(AF_INET, host, &addr.sin_addr) <= 0) {
+    if (inet_pton(AF_INET, host, &addr.sin_addr) <= 0)
+    {
         fatal("inet_pton");
     }
-    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
+    {
         fatal("connect");
     }
 
@@ -129,17 +148,22 @@ int main(int argc, char **argv) {
         printf("Press j to try to join now, or s to spectate: ");
         fflush(stdout);
 
-        if (fgets(mode_buf, sizeof(mode_buf), stdin)) {
+        if (fgets(mode_buf, sizeof(mode_buf), stdin))
+        {
             char mode = (char)toupper((unsigned char)mode_buf[0]);
-            if (mode == 'J') {
+            if (mode == 'J')
+            {
                 send_join_attempt(fd);
-            } else {
+            }
+            else
+            {
                 printf("Spectating.\n");
             }
         }
     }
 
-    while (1) {
+    while (1)
+    {
         fd_set readfds;
         FD_ZERO(&readfds);
         FD_SET(fd, &readfds);
@@ -148,46 +172,62 @@ int main(int argc, char **argv) {
         int maxfd = (fd > STDIN_FILENO) ? fd : STDIN_FILENO;
 
         int ready = select(maxfd + 1, &readfds, NULL, NULL, NULL);
-        if (ready < 0) {
+        if (ready < 0)
+        {
             fatal("select");
         }
 
-        if (FD_ISSET(fd, &readfds)) {
+        if (FD_ISSET(fd, &readfds))
+        {
             int rc = read_into_player_buffer(&me);
-            if (rc <= 0) {
+            if (rc <= 0)
+            {
                 printf("Disconnected from server.\n");
                 break;
             }
 
             char line[MAX_LINE];
-            while (pop_line(&me, line, sizeof(line))) {
+            while (pop_line(&me, line, sizeof(line)))
+            {
                 printf("[SERVER] %s\n", line);
             }
         }
 
-        if (FD_ISSET(STDIN_FILENO, &readfds)) {
+        if (FD_ISSET(STDIN_FILENO, &readfds))
+        {
             char buf[64];
-            if (!fgets(buf, sizeof(buf), stdin)) {
+            if (!fgets(buf, sizeof(buf), stdin))
+            {
                 break;
             }
 
             char c = (char)toupper((unsigned char)buf[0]);
 
-            if (c == 'Q') {
+            if (c == 'Q')
+            {
                 send_line(fd, "QUIT");
                 break;
-            } else if (c == 'J') {
+            }
+            else if (c == 'J')
+            {
                 send_join_attempt(fd);
-            } else if (c == 'R' || c == 'P' || c == 'S') {
+            }
+            else if (c == 'R' || c == 'P' || c == 'S')
+            {
                 send_line(fd, "REPICK %c", c);
-            } else if (c == 'M') {
+            }
+            else if (c == 'M')
+            {
                 send_line(fd, "REMATCH");
-            } else {
+            }
+            else
+            {
                 printf("Use j to join, r/p/s for REPICK, m for rematch, or q to quit.\n");
             }
         }
     }
 
-    close(fd);
+    CLOSESOCKET(fd);
+    net_cleanup();
     return 0;
 }

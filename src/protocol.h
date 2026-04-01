@@ -3,7 +3,7 @@
 
 #include "common.h"
 
-int send_line(int fd, const char *fmt, ...);
+int send_line(socket_t fd, const char *fmt, ...);
 int queue_line(Player *p, const char *fmt, ...);
 int player_has_pending_output(const Player *p);
 int flush_player_output(Player *p);

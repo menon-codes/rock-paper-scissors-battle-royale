@@ -1,1 +1,4 @@
 build/
+build-MinGW-W64.bat
+build-VisualStudio-2022.bat
+build-VisualStudio-2026.bat
