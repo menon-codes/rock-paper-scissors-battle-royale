@@ -109,6 +109,11 @@ static Color choice_color(char c)
     return GRAY;
 }
 
+static int is_valid_name_char(int c)
+{
+    return isalnum(c) || c == '_';
+}
+
 static void clear_gui_players(GuiPlayer players[])
 {
     memset(players, 0, sizeof(GuiPlayer) * MAX_PLAYERS);
@@ -118,6 +123,11 @@ static void parse_server_line(
     const char *line,
     GuiPlayer players[],
     const char *my_name,
+    char *registered_name,
+    size_t registered_name_sz,
+    const char *pending_name,
+    int *name_check_pending,
+    int *name_registered,
     char *status_text,
     size_t status_sz,
     int *repick_phase,
@@ -137,7 +147,20 @@ static void parse_server_line(
     char choice;
     int x, y, alive, waiting;
     long sec_long;
+    int id;
     int round_no, seconds;
+
+    if (sscanf(line, "WELCOME %d", &id) == 1)
+    {
+        if (pending_name[0] != '\0')
+        {
+            snprintf(registered_name, registered_name_sz, "%s", pending_name);
+        }
+        *name_registered = 1;
+        *name_check_pending = 0;
+        snprintf(status_text, status_sz, "Registered as %s", registered_name[0] ? registered_name : my_name);
+        return;
+    }
 
     if (strcmp(line, "MATCH_RESET") == 0)
     {
@@ -252,6 +275,22 @@ static void parse_server_line(
     if (strncmp(line, "ERROR rematch_not_available", 27) == 0)
     {
         snprintf(status_text, status_sz, "Rematch only works after GAME_OVER.");
+        return;
+    }
+
+    if (strncmp(line, "ERROR duplicate_name", 20) == 0)
+    {
+        *name_check_pending = 0;
+        *name_registered = 0;
+        snprintf(status_text, status_sz, "Name is taken. Try another name.");
+        return;
+    }
+
+    if (strncmp(line, "ERROR already_registered", 24) == 0)
+    {
+        *name_check_pending = 0;
+        *name_registered = 1;
+        snprintf(status_text, status_sz, "Name already registered on this connection.");
         return;
     }
 
@@ -396,6 +435,11 @@ static void pump_network(
     Player *net_player,
     GuiPlayer gui_players[],
     const char *my_name,
+    char *registered_name,
+    size_t registered_name_sz,
+    const char *pending_name,
+    int *name_check_pending,
+    int *name_registered,
     char *status_text,
     size_t status_sz,
     int *repick_phase,
@@ -448,6 +492,11 @@ static void pump_network(
                 line,
                 gui_players,
                 my_name,
+                registered_name,
+                registered_name_sz,
+                pending_name,
+                name_check_pending,
+                name_registered,
                 status_text,
                 status_sz,
                 repick_phase,
@@ -532,11 +581,11 @@ static void draw_legend_box(int x, int y)
 int main(int argc, char **argv)
 {
     const char *host = "127.0.0.1";
-    const char *name = "player";
+    const char *initial_name = "player";
 
     if (argc >= 2)
     {
-        name = argv[1];
+        initial_name = argv[1];
     }
 
     socket_t fd = connect_to_server(host);
@@ -545,13 +594,17 @@ int main(int argc, char **argv)
     memset(&net_player, 0, sizeof(net_player));
     net_player.fd = fd;
 
-    send_line(fd, "HELLO %s", name);
-
     GuiPlayer gui_players[MAX_PLAYERS];
     memset(gui_players, 0, sizeof(gui_players));
 
     char status_text[256] = "Connected";
+    char name_input[MAX_NAME] = "";
+    char pending_name[MAX_NAME] = "";
+    char my_name[MAX_NAME] = "";
     char winner_name[MAX_NAME] = "";
+    int name_registered = 0;
+    int name_check_pending = 0;
+    int name_box_active = 0;
     int repick_phase = 0;
     int game_over = 0;
 
@@ -565,19 +618,28 @@ int main(int argc, char **argv)
     double setup_end_time = 0.0;
     double round_end_time = 0.0;
 
+    snprintf(name_input, sizeof(name_input), "%s", initial_name);
+
     InitWindow(WINDOW_W, WINDOW_H, "RPS Battle Royale");
     SetTargetFPS(60);
 
-    Rectangle rockBtn = {720, 250, 120, 42};
-    Rectangle paperBtn = {850, 250, 120, 42};
-    Rectangle scissorsBtn = {980, 250, 140, 42};
+    Rectangle rockBtn = {720, 430, 120, 42};
+    Rectangle paperBtn = {850, 430, 120, 42};
+    Rectangle scissorsBtn = {980, 430, 140, 42};
+    Rectangle nameBox = {720, 495, 260, 42};
+    Rectangle nameBtn = {990, 495, 130, 42};
 
     while (!WindowShouldClose())
     {
         pump_network(
             &net_player,
             gui_players,
-            name,
+            my_name,
+            my_name,
+            sizeof(my_name),
+            pending_name,
+            &name_check_pending,
+            &name_registered,
             status_text,
             sizeof(status_text),
             &repick_phase,
@@ -595,7 +657,62 @@ int main(int argc, char **argv)
 
         Vector2 mouse = GetMousePosition();
 
-        if (!game_over && can_attempt_join && !joined_match && !repick_phase &&
+        if (name_box_active && !name_registered)
+        {
+            int ch = GetCharPressed();
+            while (ch > 0)
+            {
+                size_t len = strlen(name_input);
+                if (len < sizeof(name_input) - 1 && is_valid_name_char(ch))
+                {
+                    name_input[len] = (char)ch;
+                    name_input[len + 1] = '\0';
+                }
+                ch = GetCharPressed();
+            }
+
+            if (IsKeyPressed(KEY_BACKSPACE))
+            {
+                size_t len = strlen(name_input);
+                if (len > 0)
+                {
+                    name_input[len - 1] = '\0';
+                }
+            }
+
+            if (IsKeyPressed(KEY_ENTER) && !name_check_pending && name_input[0] != '\0')
+            {
+                snprintf(pending_name, sizeof(pending_name), "%s", name_input);
+                send_line(fd, "HELLO %s", pending_name);
+                name_check_pending = 1;
+                snprintf(status_text, sizeof(status_text), "Checking name '%s'...", pending_name);
+            }
+        }
+
+        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
+        {
+            if (CheckCollisionPointRec(mouse, nameBox) && !name_registered)
+            {
+                name_box_active = 1;
+            }
+            else if (CheckCollisionPointRec(mouse, nameBtn) && !name_registered)
+            {
+                name_box_active = 0;
+                if (!name_check_pending && name_input[0] != '\0')
+                {
+                    snprintf(pending_name, sizeof(pending_name), "%s", name_input);
+                    send_line(fd, "HELLO %s", pending_name);
+                    name_check_pending = 1;
+                    snprintf(status_text, sizeof(status_text), "Checking name '%s'...", pending_name);
+                }
+            }
+            else
+            {
+                name_box_active = 0;
+            }
+        }
+
+        if (name_registered && !game_over && can_attempt_join && !joined_match && !repick_phase &&
             IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
         {
 
@@ -657,7 +774,18 @@ int main(int argc, char **argv)
         panel_y += 50;
 
         char me_buf[64];
-        snprintf(me_buf, sizeof(me_buf), "You: %s", name);
+        if (name_registered)
+        {
+            snprintf(me_buf, sizeof(me_buf), "You: %s", my_name);
+        }
+        else if (pending_name[0] != '\0')
+        {
+            snprintf(me_buf, sizeof(me_buf), "You: %s (checking)", pending_name);
+        }
+        else
+        {
+            snprintf(me_buf, sizeof(me_buf), "You: (not registered)");
+        }
         DrawText(me_buf, panel_x, panel_y, 20, DARKBLUE);
         panel_y += 28;
 
@@ -744,6 +872,20 @@ int main(int argc, char **argv)
         DrawRectangleRec(scissorsBtn, selected_choice == 'S' ? LIME : LIGHTGRAY);
         DrawRectangleLinesEx(scissorsBtn, 2, BLACK);
         DrawText("Scissors", (int)scissorsBtn.x + 20, (int)scissorsBtn.y + 10, 20, BLACK);
+
+        DrawText("Name:", (int)nameBox.x, (int)nameBox.y - 24, 20, DARKGRAY);
+        DrawRectangleRec(nameBox, name_box_active ? WHITE : LIGHTGRAY);
+        DrawRectangleLinesEx(nameBox, 2, name_box_active ? BLUE : DARKGRAY);
+        DrawText(name_input[0] ? name_input : "type_name_here", (int)nameBox.x + 10, (int)nameBox.y + 10, 20, BLACK);
+
+        DrawRectangleRec(nameBtn, (!name_registered && !name_check_pending) ? LIGHTGRAY : GRAY);
+        DrawRectangleLinesEx(nameBtn, 2, BLACK);
+        DrawText("Set Name", (int)nameBtn.x + 14, (int)nameBtn.y + 10, 20, BLACK);
+
+        if (!name_registered)
+        {
+            DrawText("Set a unique name before joining.", panel_x, WINDOW_H - 145, 18, MAROON);
+        }
 
         DrawText("Controls:", panel_x, WINDOW_H - 115, 20, DARKGRAY);
         DrawText("Click type button, then click grid to join", panel_x, WINDOW_H - 90, 18, GRAY);
