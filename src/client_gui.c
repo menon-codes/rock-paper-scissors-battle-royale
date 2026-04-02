@@ -162,6 +162,17 @@ static void parse_server_line(
         return;
     }
 
+    if (strcmp(line, "STATE_BEGIN") == 0)
+    {
+        clear_gui_players(players);
+        return;
+    }
+
+    if (strcmp(line, "STATE_END") == 0)
+    {
+        return;
+    }
+
     if (strcmp(line, "MATCH_RESET") == 0)
     {
         clear_gui_players(players);
@@ -291,6 +302,13 @@ static void parse_server_line(
         *name_check_pending = 0;
         *name_registered = 1;
         snprintf(status_text, status_sz, "Name already registered on this connection.");
+        return;
+    }
+
+    if (strncmp(line, "ERROR register_first", 20) == 0)
+    {
+        *name_registered = 0;
+        snprintf(status_text, status_sz, "Set your name first.");
         return;
     }
 
@@ -593,6 +611,7 @@ int main(int argc, char **argv)
     Player net_player;
     memset(&net_player, 0, sizeof(net_player));
     net_player.fd = fd;
+    send_line(fd, "GET_STATE");
 
     GuiPlayer gui_players[MAX_PLAYERS];
     memset(gui_players, 0, sizeof(gui_players));
@@ -604,6 +623,7 @@ int main(int argc, char **argv)
     char winner_name[MAX_NAME] = "";
     int name_registered = 0;
     int name_check_pending = 0;
+    int state_request_sent = 0;
     int name_box_active = 0;
     int repick_phase = 0;
     int game_over = 0;
@@ -685,6 +705,7 @@ int main(int argc, char **argv)
                 snprintf(pending_name, sizeof(pending_name), "%s", name_input);
                 send_line(fd, "HELLO %s", pending_name);
                 name_check_pending = 1;
+                state_request_sent = 0;
                 snprintf(status_text, sizeof(status_text), "Checking name '%s'...", pending_name);
             }
         }
@@ -703,6 +724,7 @@ int main(int argc, char **argv)
                     snprintf(pending_name, sizeof(pending_name), "%s", name_input);
                     send_line(fd, "HELLO %s", pending_name);
                     name_check_pending = 1;
+                    state_request_sent = 0;
                     snprintf(status_text, sizeof(status_text), "Checking name '%s'...", pending_name);
                 }
             }
@@ -710,6 +732,12 @@ int main(int argc, char **argv)
             {
                 name_box_active = 0;
             }
+        }
+
+        if (!state_request_sent)
+        {
+            send_line(fd, "GET_STATE");
+            state_request_sent = 1;
         }
 
         if (name_registered && !game_over && can_attempt_join && !joined_match && !repick_phase &&

@@ -79,6 +79,8 @@ static int all_alive_repicked(ServerState *s)
     return alive > 0;
 }
 
+static void broadcast_game_state(ServerState *s);
+
 static int add_player(ServerState *s, socket_t fd)
 {
     for (int i = 0; i < MAX_PLAYERS; i++)
@@ -141,6 +143,8 @@ static void drop_player(ServerState *s, int idx, int announce)
                 (void)queue_line(&s->players[i], "%s", line);
             }
         }
+
+        broadcast_game_state(s);
     }
 }
 
@@ -169,6 +173,80 @@ static void queue_broadcast(ServerState *s, const char *fmt, ...)
     for (int k = 0; k < drop_count; k++)
     {
         drop_player(s, to_drop[k], 0);
+    }
+}
+
+static void queue_game_state_for_player(ServerState *s, Player *dst)
+{
+    (void)queue_line(dst, "STATE_BEGIN");
+
+    if (s->phase == PHASE_LOBBY_OPEN)
+    {
+        if (s->join_deadline == 0)
+        {
+            (void)queue_line(dst, "LOBBY_WAITING");
+        }
+        else
+        {
+            (void)queue_line(dst, "LOBBY_OPEN %ld", seconds_left(s->join_deadline));
+        }
+    }
+    else if (s->phase == PHASE_SETUP)
+    {
+        (void)queue_line(dst, "LOBBY_CLOSED");
+        (void)queue_line(dst, "SETUP_OPEN %d", (int)seconds_left(s->setup_deadline));
+    }
+    else if (s->phase == PHASE_ROUND_ACTIVE)
+    {
+        (void)queue_line(dst, "LOBBY_CLOSED");
+        (void)queue_line(dst, "ROUND_START %d %d", s->round_no, (int)seconds_left(s->round_deadline));
+    }
+    else if (s->phase == PHASE_REPICK)
+    {
+        (void)queue_line(dst, "LOBBY_CLOSED");
+        (void)queue_line(dst, "REPICK_START");
+    }
+    else if (s->phase == PHASE_GAME_OVER)
+    {
+        const char *winner = "nobody";
+        for (int i = 0; i < MAX_PLAYERS; i++)
+        {
+            Player *p = &s->players[i];
+            if (p->connected && p->registered && p->admitted && p->alive)
+            {
+                winner = p->name;
+                break;
+            }
+        }
+        (void)queue_line(dst, "GAME_OVER %s", winner);
+    }
+
+    for (int i = 0; i < MAX_PLAYERS; i++)
+    {
+        Player *p = &s->players[i];
+        if (p->connected && p->registered && p->admitted)
+        {
+            (void)queue_line(dst, "PLAYER %s %c %d %d %d %d",
+                             p->name,
+                             p->choice_chosen ? p->choice : '?',
+                             p->x,
+                             p->y,
+                             p->alive,
+                             p->waiting);
+        }
+    }
+
+    (void)queue_line(dst, "STATE_END");
+}
+
+static void broadcast_game_state(ServerState *s)
+{
+    for (int i = 0; i < MAX_PLAYERS; i++)
+    {
+        if (s->players[i].connected && s->players[i].registered)
+        {
+            queue_game_state_for_player(s, &s->players[i]);
+        }
     }
 }
 
@@ -433,7 +511,7 @@ static void maybe_admit_player(ServerState *s, int idx)
 
     (void)queue_line(p, "JOINED_MATCH");
     queue_broadcast(s, "JOINED %s", p->name);
-    broadcast_positions(s);
+    broadcast_game_state(s);
 }
 
 static void resolve_round(ServerState *s)
@@ -582,6 +660,13 @@ static void handle_command(ServerState *s, int idx, const char *line)
         {
             (void)queue_line(p, "LOBBY_CLOSED");
         }
+
+        return;
+    }
+
+    if (strcmp(line, "GET_STATE") == 0)
+    {
+        queue_game_state_for_player(s, p);
 
         return;
     }
