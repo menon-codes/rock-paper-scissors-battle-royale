@@ -21,6 +21,23 @@ static long seconds_left(time_t deadline)
 	return rem > 0 ? rem : 0;
 }
 
+static int queue_line_checked(Player *p, const char *fmt, ...)
+{
+	char line[MAX_LINE];
+	va_list args;
+
+	va_start(args, fmt);
+	int n = vsnprintf(line, sizeof(line), fmt, args);
+	va_end(args);
+
+	if (n < 0 || n >= (int)sizeof(line))
+	{
+		return -1;
+	}
+
+	return queue_line(p, "%s", line);
+}
+
 static void queue_broadcast(ServerState *s, const char *fmt, ...)
 {
 	char line[MAX_LINE];
@@ -47,16 +64,32 @@ static void queue_broadcast(ServerState *s, const char *fmt, ...)
 	{
 		drop_player(s, to_drop[k], 0);
 	}
+
+	if (drop_count > 0)
+	{
+		reevaluate_state(s);
+	}
 }
 
 static void broadcast_game_state(ServerState *s)
 {
+	int dropped = 0;
+
 	for (int i = 0; i < MAX_PLAYERS; i++)
 	{
 		if (player_is_registered(&s->players[i]))
 		{
-			queue_game_state_for_player(s, &s->players[i]);
+			if (queue_game_state_for_player(s, &s->players[i]) < 0)
+			{
+				drop_player(s, i, 0);
+				dropped = 1;
+			}
 		}
+	}
+
+	if (dropped)
+	{
+		reevaluate_state(s);
 	}
 }
 
@@ -162,50 +195,58 @@ void drop_player(ServerState *s, int idx, int announce)
 
 	if (should_announce)
 	{
-		char line[MAX_LINE];
-		snprintf(line, sizeof(line), "LEFT %s", name);
-
-		for (int i = 0; i < MAX_PLAYERS; i++)
-		{
-			if (s->players[i].connected)
-			{
-				(void)queue_line(&s->players[i], "%s", line);
-			}
-		}
-
+		queue_broadcast(s, "LEFT %s", name);
 		broadcast_game_state(s);
 	}
 }
 
-void queue_game_state_for_player(ServerState *s, Player *dst)
+int queue_game_state_for_player(ServerState *s, Player *dst)
 {
-	(void)queue_line(dst, "STATE_BEGIN");
+	if (queue_line_checked(dst, "STATE_BEGIN") < 0)
+	{
+		return -1;
+	}
 
 	if (s->phase == PHASE_LOBBY_OPEN)
 	{
 		if (s->join_deadline == 0)
 		{
-			(void)queue_line(dst, "LOBBY_WAITING");
+			if (queue_line_checked(dst, "LOBBY_WAITING") < 0)
+			{
+				return -1;
+			}
 		}
 		else
 		{
-			(void)queue_line(dst, "LOBBY_OPEN %ld", seconds_left(s->join_deadline));
+			if (queue_line_checked(dst, "LOBBY_OPEN %ld", seconds_left(s->join_deadline)) < 0)
+			{
+				return -1;
+			}
 		}
 	}
 	else if (s->phase == PHASE_SETUP)
 	{
-		(void)queue_line(dst, "LOBBY_CLOSED");
-		(void)queue_line(dst, "SETUP_OPEN %d", (int)seconds_left(s->setup_deadline));
+		if (queue_line_checked(dst, "LOBBY_CLOSED") < 0 ||
+			queue_line_checked(dst, "SETUP_OPEN %d", (int)seconds_left(s->setup_deadline)) < 0)
+		{
+			return -1;
+		}
 	}
 	else if (s->phase == PHASE_ROUND_ACTIVE)
 	{
-		(void)queue_line(dst, "LOBBY_CLOSED");
-		(void)queue_line(dst, "ROUND_START %d %d", s->round_no, (int)seconds_left(s->round_deadline));
+		if (queue_line_checked(dst, "LOBBY_CLOSED") < 0 ||
+			queue_line_checked(dst, "ROUND_START %d %d", s->round_no, (int)seconds_left(s->round_deadline)) < 0)
+		{
+			return -1;
+		}
 	}
 	else if (s->phase == PHASE_REPICK)
 	{
-		(void)queue_line(dst, "LOBBY_CLOSED");
-		(void)queue_line(dst, "REPICK_START");
+		if (queue_line_checked(dst, "LOBBY_CLOSED") < 0 ||
+			queue_line_checked(dst, "REPICK_START") < 0)
+		{
+			return -1;
+		}
 	}
 	else if (s->phase == PHASE_GAME_OVER)
 	{
@@ -219,7 +260,10 @@ void queue_game_state_for_player(ServerState *s, Player *dst)
 				break;
 			}
 		}
-		(void)queue_line(dst, "GAME_OVER %s", winner);
+		if (queue_line_checked(dst, "GAME_OVER %s", winner) < 0)
+		{
+			return -1;
+		}
 	}
 
 	for (int i = 0; i < MAX_PLAYERS; i++)
@@ -227,17 +271,25 @@ void queue_game_state_for_player(ServerState *s, Player *dst)
 		Player *p = &s->players[i];
 		if (player_is_admitted(p))
 		{
-			(void)queue_line(dst, "PLAYER %s %c %d %d %d %d",
-							 p->name,
-							 p->choice_chosen ? p->choice : '?',
-							 p->x,
-							 p->y,
-							 p->alive,
-							 p->waiting);
+			if (queue_line_checked(dst, "PLAYER %s %c %d %d %d %d",
+								   p->name,
+								   p->choice_chosen ? p->choice : '?',
+								   p->x,
+								   p->y,
+								   p->alive,
+								   p->waiting) < 0)
+			{
+				return -1;
+			}
 		}
 	}
 
-	(void)queue_line(dst, "STATE_END");
+	if (queue_line_checked(dst, "STATE_END") < 0)
+	{
+		return -1;
+	}
+
+	return 0;
 }
 
 void maybe_admit_player(ServerState *s, int idx)
@@ -253,7 +305,11 @@ void maybe_admit_player(ServerState *s, int idx)
 
 	if (s->phase != PHASE_LOBBY_OPEN)
 	{
-		(void)queue_line(p, "ERROR lobby_closed");
+		if (queue_line_checked(p, "ERROR lobby_closed") < 0)
+		{
+			drop_player(s, idx, 0);
+			reevaluate_state(s);
+		}
 		return;
 	}
 
@@ -264,14 +320,23 @@ void maybe_admit_player(ServerState *s, int idx)
 	}
 	else if (time(NULL) >= s->join_deadline)
 	{
-		(void)queue_line(p, "ERROR lobby_closed");
+		if (queue_line_checked(p, "ERROR lobby_closed") < 0)
+		{
+			drop_player(s, idx, 0);
+			reevaluate_state(s);
+		}
 		return;
 	}
 
 	p->admitted = 1;
 	p->waiting = 1;
 
-	(void)queue_line(p, "JOINED_MATCH");
+	if (queue_line_checked(p, "JOINED_MATCH") < 0)
+	{
+		drop_player(s, idx, 0);
+		reevaluate_state(s);
+		return;
+	}
 	queue_broadcast(s, "JOINED %s", p->name);
 	broadcast_game_state(s);
 }
@@ -305,11 +370,14 @@ void reset_match(ServerState *s)
 		p->x = -1;
 		p->y = -1;
 
-		(void)queue_line(p, "MATCH_RESET");
-		(void)queue_line(p, "SPECTATING");
-		(void)queue_line(p, "CHOOSE_TYPE");
-		(void)queue_line(p, "CHOOSE_SPAWN %d %d", GRID_W, GRID_H);
-		(void)queue_line(p, "LOBBY_WAITING");
+		if (queue_line_checked(p, "MATCH_RESET") < 0 ||
+			queue_line_checked(p, "SPECTATING") < 0 ||
+			queue_line_checked(p, "CHOOSE_TYPE") < 0 ||
+			queue_line_checked(p, "CHOOSE_SPAWN %d %d", GRID_W, GRID_H) < 0 ||
+			queue_line_checked(p, "LOBBY_WAITING") < 0)
+		{
+			drop_player(s, i, 0);
+		}
 	}
 }
 
@@ -495,7 +563,10 @@ void resolve_round(ServerState *s)
 							a->name, a->x, a->y);
 			if (b->connected)
 			{
-				(void)queue_line(b, "ELIMINATED lost");
+				if (queue_line_checked(b, "ELIMINATED lost") < 0)
+				{
+					drop_player(s, pairs[k].b, 0);
+				}
 			}
 		}
 		else if (r == -1)
@@ -513,7 +584,10 @@ void resolve_round(ServerState *s)
 							b->name, b->x, b->y);
 			if (a->connected)
 			{
-				(void)queue_line(a, "ELIMINATED lost");
+				if (queue_line_checked(a, "ELIMINATED lost") < 0)
+				{
+					drop_player(s, pairs[k].a, 0);
+				}
 			}
 		}
 		else

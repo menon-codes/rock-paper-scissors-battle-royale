@@ -17,6 +17,68 @@ typedef struct
 	CommandHandler handler;
 } CommandDispatchEntry;
 
+static long seconds_left(time_t deadline)
+{
+	long rem = (long)(deadline - time(NULL));
+	return rem > 0 ? rem : 0;
+}
+
+static int parse_rps_choice(const char *line, int offset, char *out_choice)
+{
+	char choice = line[offset];
+
+	if (choice >= 'a' && choice <= 'z')
+	{
+		choice = (char)(choice - 'a' + 'A');
+	}
+
+	if (choice != 'R' && choice != 'P' && choice != 'S')
+	{
+		return 0;
+	}
+
+	*out_choice = choice;
+	return 1;
+}
+
+static int require_registered_not_admitted(Player *p)
+{
+	if (!p->registered)
+	{
+		(void)queue_line(p, "ERROR register_first");
+		return 0;
+	}
+
+	if (p->admitted)
+	{
+		(void)queue_line(p, "ERROR already_joined");
+		return 0;
+	}
+
+	return 1;
+}
+
+static void queue_lobby_status_for_player(ServerState *s, Player *p)
+{
+	if (s->phase == PHASE_LOBBY_OPEN)
+	{
+		(void)queue_line(p, "CHOOSE_TYPE");
+		(void)queue_line(p, "CHOOSE_SPAWN %d %d", GRID_W, GRID_H);
+
+		if (s->join_deadline == 0)
+		{
+			(void)queue_line(p, "LOBBY_WAITING");
+		}
+		else
+		{
+			(void)queue_line(p, "LOBBY_OPEN %ld", seconds_left(s->join_deadline));
+		}
+		return;
+	}
+
+	(void)queue_line(p, "LOBBY_CLOSED");
+}
+
 static int find_name(ServerState *s, const char *name)
 {
 	for (int i = 0; i < MAX_PLAYERS; i++)
@@ -121,50 +183,20 @@ static void handle_hello_command(ServerState *s, int idx, const char *line)
 
 	(void)queue_line(p, "WELCOME %d", p->id);
 	(void)queue_line(p, "SPECTATING");
-
-	if (s->phase == PHASE_LOBBY_OPEN)
-	{
-		(void)queue_line(p, "CHOOSE_TYPE");
-		(void)queue_line(p, "CHOOSE_SPAWN %d %d", GRID_W, GRID_H);
-
-		if (s->join_deadline == 0)
-		{
-			(void)queue_line(p, "LOBBY_WAITING");
-		}
-		else
-		{
-			(void)queue_line(p, "LOBBY_OPEN %ld", (long)(s->join_deadline - time(NULL) > 0 ? s->join_deadline - time(NULL) : 0));
-		}
-	}
-	else
-	{
-		(void)queue_line(p, "LOBBY_CLOSED");
-	}
+	queue_lobby_status_for_player(s, p);
 }
 
 static void handle_choice_command(ServerState *s, int idx, const char *line)
 {
 	Player *p = &s->players[idx];
-	char choice = line[7];
+	char choice;
 
-	if (!p->registered)
+	if (!require_registered_not_admitted(p))
 	{
-		(void)queue_line(p, "ERROR register_first");
 		return;
 	}
 
-	if (p->admitted)
-	{
-		(void)queue_line(p, "ERROR already_joined");
-		return;
-	}
-
-	if (choice >= 'a' && choice <= 'z')
-	{
-		choice = (char)(choice - 'a' + 'A');
-	}
-
-	if (choice != 'R' && choice != 'P' && choice != 'S')
+	if (!parse_rps_choice(line, 7, &choice))
 	{
 		(void)queue_line(p, "ERROR bad_choice");
 		return;
@@ -182,15 +214,8 @@ static void handle_spawn_command(ServerState *s, int idx, const char *line)
 	Player *p = &s->players[idx];
 	int x, y;
 
-	if (!p->registered)
+	if (!require_registered_not_admitted(p))
 	{
-		(void)queue_line(p, "ERROR register_first");
-		return;
-	}
-
-	if (p->admitted)
-	{
-		(void)queue_line(p, "ERROR already_joined");
 		return;
 	}
 
@@ -223,12 +248,7 @@ static void handle_spawn_command(ServerState *s, int idx, const char *line)
 static void handle_repick_command(ServerState *s, int idx, const char *line)
 {
 	Player *p = &s->players[idx];
-	char choice = line[7];
-
-	if (choice >= 'a' && choice <= 'z')
-	{
-		choice = (char)(choice - 'a' + 'A');
-	}
+	char choice;
 
 	if (s->phase != PHASE_REPICK)
 	{
@@ -248,7 +268,7 @@ static void handle_repick_command(ServerState *s, int idx, const char *line)
 		return;
 	}
 
-	if (choice != 'R' && choice != 'P' && choice != 'S')
+	if (!parse_rps_choice(line, 7, &choice))
 	{
 		(void)queue_line(p, "ERROR bad_choice");
 		return;
@@ -271,7 +291,11 @@ static void handle_repick_command(ServerState *s, int idx, const char *line)
 static void handle_get_state_command(ServerState *s, int idx, const char *line)
 {
 	(void)line;
-	queue_game_state_for_player(s, &s->players[idx]);
+	if (queue_game_state_for_player(s, &s->players[idx]) < 0)
+	{
+		drop_player(s, idx, 0);
+		reevaluate_state(s);
+	}
 }
 
 static void handle_rematch_command(ServerState *s, int idx, const char *line)

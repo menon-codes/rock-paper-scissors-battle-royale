@@ -8,7 +8,7 @@
  * This module mutates match phase, admission, round resolution, and snapshots.
  */
 void drop_player(ServerState *s, int idx, int announce);
-void queue_game_state_for_player(ServerState *s, Player *dst);
+int queue_game_state_for_player(ServerState *s, Player *dst);
 void maybe_admit_player(ServerState *s, int idx);
 void reset_match(ServerState *s);
 void reevaluate_state(ServerState *s);
