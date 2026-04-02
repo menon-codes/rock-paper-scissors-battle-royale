@@ -1,3 +1,4 @@
+#include "client_gui_state.h"
 #include "protocol.h"
 #include "common.h"
 
@@ -19,83 +20,10 @@
 #define GRID_ORIGIN_Y 40
 #define CELL_SIZE 60
 
-typedef struct
-{
-    int used;
-    char name[MAX_NAME];
-    char choice;
-    int x;
-    int y;
-    int alive;
-    int waiting;
-} GuiPlayer;
-
 static void fatal(const char *msg)
 {
     perror(msg);
     exit(1);
-}
-
-static socket_t connect_to_server(const char *host)
-{
-    socket_t fd;
-
-    if (net_init() != 0)
-        fatal("WSAStartup");
-
-    fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (fd == INVALID_SOCKET)
-        fatal("socket");
-
-    struct sockaddr_in addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(PORT);
-
-    if (inet_pton(AF_INET, host, &addr.sin_addr) <= 0)
-    {
-        fatal("inet_pton");
-    }
-    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
-    {
-        fatal("connect");
-    }
-
-    return fd;
-}
-
-static int find_player(GuiPlayer players[], const char *name)
-{
-    for (int i = 0; i < MAX_PLAYERS; i++)
-    {
-        if (players[i].used && strcmp(players[i].name, name) == 0)
-        {
-            return i;
-        }
-    }
-    return -1;
-}
-
-static int get_or_add_player(GuiPlayer players[], const char *name)
-{
-    int idx = find_player(players, name);
-    if (idx != -1)
-        return idx;
-
-    for (int i = 0; i < MAX_PLAYERS; i++)
-    {
-        if (!players[i].used)
-        {
-            memset(&players[i], 0, sizeof(players[i]));
-            players[i].used = 1;
-            snprintf(players[i].name, sizeof(players[i].name), "%s", name);
-            players[i].x = -1;
-            players[i].y = -1;
-            players[i].choice = '?';
-            return i;
-        }
-    }
-    return -1;
 }
 
 static Color choice_color(char c)
@@ -112,425 +40,6 @@ static Color choice_color(char c)
 static int is_valid_name_char(int c)
 {
     return isalnum(c) || c == '_';
-}
-
-static void clear_gui_players(GuiPlayer players[])
-{
-    memset(players, 0, sizeof(GuiPlayer) * MAX_PLAYERS);
-}
-
-static void parse_server_line(
-    const char *line,
-    GuiPlayer players[],
-    const char *my_name,
-    char *registered_name,
-    size_t registered_name_sz,
-    const char *pending_name,
-    int *name_check_pending,
-    int *name_registered,
-    char *status_text,
-    size_t status_sz,
-    int *repick_phase,
-    int *game_over,
-    int *can_attempt_join,
-    int *joined_match,
-    int *choice_confirmed,
-    int *spawn_confirmed,
-    char *selected_choice,
-    double *lobby_end_time,
-    double *setup_end_time,
-    double *round_end_time,
-    char *winner_name,
-    size_t winner_sz)
-{
-    char name1[MAX_NAME], name2[MAX_NAME], winner[MAX_NAME];
-    char choice;
-    int x, y, alive, waiting;
-    long sec_long;
-    int id;
-    int round_no, seconds;
-
-    if (sscanf(line, "WELCOME %d", &id) == 1)
-    {
-        if (pending_name[0] != '\0')
-        {
-            snprintf(registered_name, registered_name_sz, "%s", pending_name);
-        }
-        *name_registered = 1;
-        *name_check_pending = 0;
-        snprintf(status_text, status_sz, "Registered as %s", registered_name[0] ? registered_name : my_name);
-        return;
-    }
-
-    if (strcmp(line, "STATE_BEGIN") == 0)
-    {
-        clear_gui_players(players);
-        return;
-    }
-
-    if (strcmp(line, "STATE_END") == 0)
-    {
-        return;
-    }
-
-    if (strcmp(line, "MATCH_RESET") == 0)
-    {
-        clear_gui_players(players);
-        *repick_phase = 0;
-        *game_over = 0;
-        *can_attempt_join = 1;
-        *joined_match = 0;
-        *choice_confirmed = 0;
-        *spawn_confirmed = 0;
-        *selected_choice = 0;
-        *lobby_end_time = 0.0;
-        *setup_end_time = 0.0;
-        *round_end_time = 0.0;
-        winner_name[0] = '\0';
-        snprintf(status_text, status_sz, "Match reset. You are spectating again.");
-        return;
-    }
-
-    if (strcmp(line, "SPECTATING") == 0)
-    {
-        snprintf(status_text, status_sz, "Spectating. Pick a type and click a tile if lobby is open.");
-        return;
-    }
-
-    if (strcmp(line, "LOBBY_WAITING") == 0)
-    {
-        *can_attempt_join = 1;
-        *lobby_end_time = 0.0;
-        snprintf(status_text, status_sz, "Lobby idle. Be the first player to join.");
-        return;
-    }
-
-    if (sscanf(line, "LOBBY_OPEN %ld", &sec_long) == 1)
-    {
-        *can_attempt_join = 1;
-        *lobby_end_time = GetTime() + sec_long;
-        snprintf(status_text, status_sz, "Lobby open. Choose type and click a spawn tile.");
-        return;
-    }
-
-    if (strcmp(line, "LOBBY_CLOSED") == 0)
-    {
-        *can_attempt_join = 0;
-        *lobby_end_time = 0.0;
-        snprintf(status_text, status_sz, "Lobby closed. Spectating only.");
-        return;
-    }
-
-    if (sscanf(line, "SETUP_OPEN %d", &seconds) == 1)
-    {
-        *setup_end_time = GetTime() + seconds;
-        snprintf(status_text, status_sz, "Setup locked. Waiting for admitted players.");
-        return;
-    }
-
-    if (strcmp(line, "CHOOSE_TYPE") == 0 || strncmp(line, "CHOOSE_SPAWN", 12) == 0)
-    {
-        *can_attempt_join = 1;
-        return;
-    }
-
-    if (sscanf(line, "CHOICE_OK %c", &choice) == 1)
-    {
-        *selected_choice = choice;
-        *choice_confirmed = 1;
-        snprintf(status_text, status_sz, "Choice confirmed: %c", choice);
-        return;
-    }
-
-    if (sscanf(line, "SPAWN_OK %d %d", &x, &y) == 2)
-    {
-        *spawn_confirmed = 1;
-        snprintf(status_text, status_sz, "Spawn confirmed at (%d,%d)", x, y);
-        return;
-    }
-
-    if (strcmp(line, "JOINED_MATCH") == 0)
-    {
-        *joined_match = 1;
-        *can_attempt_join = 0;
-        snprintf(status_text, status_sz, "You joined the current match.");
-        return;
-    }
-
-    if (strncmp(line, "WAITING_FOR_OTHERS", 18) == 0)
-    {
-        snprintf(status_text, status_sz, "Waiting for other admitted players.");
-        return;
-    }
-
-    if (strncmp(line, "ERROR spawn_taken", 17) == 0)
-    {
-        *spawn_confirmed = 0;
-        snprintf(status_text, status_sz, "Spawn taken. Click another tile.");
-        return;
-    }
-
-    if (strncmp(line, "ERROR lobby_closed", 18) == 0)
-    {
-        *can_attempt_join = 0;
-        snprintf(status_text, status_sz, "Too late to join this match. Spectating only.");
-        return;
-    }
-
-    if (strncmp(line, "ERROR already_joined", 20) == 0)
-    {
-        snprintf(status_text, status_sz, "Already joined this match.");
-        return;
-    }
-
-    if (strncmp(line, "ERROR rematch_not_available", 27) == 0)
-    {
-        snprintf(status_text, status_sz, "Rematch only works after GAME_OVER.");
-        return;
-    }
-
-    if (strncmp(line, "ERROR duplicate_name", 20) == 0)
-    {
-        *name_check_pending = 0;
-        *name_registered = 0;
-        snprintf(status_text, status_sz, "Name is taken. Try another name.");
-        return;
-    }
-
-    if (strncmp(line, "ERROR already_registered", 24) == 0)
-    {
-        *name_check_pending = 0;
-        *name_registered = 1;
-        snprintf(status_text, status_sz, "Name already registered on this connection.");
-        return;
-    }
-
-    if (strncmp(line, "ERROR register_first", 20) == 0)
-    {
-        *name_registered = 0;
-        snprintf(status_text, status_sz, "Set your name first.");
-        return;
-    }
-
-    if (strncmp(line, "JOINED ", 7) == 0)
-    {
-        if (sscanf(line, "JOINED %31s", name1) == 1)
-        {
-            snprintf(status_text, status_sz, "%s joined the match", name1);
-        }
-        return;
-    }
-
-    if (sscanf(line, "LEFT %31s", name1) == 1)
-    {
-        int idx = find_player(players, name1);
-        if (idx != -1)
-        {
-            players[idx].used = 0;
-        }
-        snprintf(status_text, status_sz, "%s left", name1);
-        return;
-    }
-
-    if (sscanf(line, "PLAYER %31s %c %d %d %d %d",
-               name1, &choice, &x, &y, &alive, &waiting) == 6)
-    {
-        int idx = get_or_add_player(players, name1);
-        if (idx != -1)
-        {
-            players[idx].choice = choice;
-            players[idx].x = x;
-            players[idx].y = y;
-            players[idx].alive = alive;
-            players[idx].waiting = waiting;
-        }
-
-        if (strcmp(name1, my_name) == 0)
-        {
-            if (choice == 'R' || choice == 'P' || choice == 'S')
-            {
-                *selected_choice = choice;
-            }
-        }
-        return;
-    }
-
-    if (sscanf(line, "ROUND_START %d %d", &round_no, &seconds) == 2)
-    {
-        *repick_phase = 0;
-        *round_end_time = GetTime() + seconds;
-        *setup_end_time = 0.0;
-        snprintf(status_text, status_sz, "Round %d started", round_no);
-        return;
-    }
-
-    if (strcmp(line, "REPICK_START") == 0)
-    {
-        *repick_phase = 1;
-        snprintf(status_text, status_sz, "Repick phase. Press R, P, or S.");
-        return;
-    }
-
-    if (strcmp(line, "REPICK_DONE") == 0)
-    {
-        *repick_phase = 0;
-        snprintf(status_text, status_sz, "Repick finished");
-        return;
-    }
-
-    if (strncmp(line, "PAIR ", 5) == 0)
-    {
-        char c1, c2;
-        int move_x, move_y;
-
-        if (sscanf(line, "PAIR %31s %31s %c %c WINNER %31s MOVE %d %d",
-                   name1, name2, &c1, &c2, winner, &move_x, &move_y) == 7)
-        {
-            int idx_w = find_player(players, winner);
-            const char *loser = (strcmp(winner, name1) == 0) ? name2 : name1;
-            int idx_l = find_player(players, loser);
-
-            if (idx_w != -1)
-            {
-                players[idx_w].x = move_x;
-                players[idx_w].y = move_y;
-                players[idx_w].alive = 1;
-                players[idx_w].waiting = 0;
-            }
-            if (idx_l != -1)
-            {
-                players[idx_l].alive = 0;
-                players[idx_l].waiting = 0;
-                players[idx_l].x = -1;
-                players[idx_l].y = -1;
-            }
-
-            snprintf(status_text, status_sz, "%s beat %s", winner, loser);
-            return;
-        }
-
-        if (sscanf(line, "PAIR %31s %31s %c %c TIE", name1, name2, &c1, &c2) == 4)
-        {
-            snprintf(status_text, status_sz, "%s and %s tied", name1, name2);
-            return;
-        }
-    }
-
-    if (sscanf(line, "BYE %31s", name1) == 1)
-    {
-        snprintf(status_text, status_sz, "%s got a bye", name1);
-        return;
-    }
-
-    if (sscanf(line, "GAME_OVER %31s", name1) == 1)
-    {
-        *game_over = 1;
-        snprintf(winner_name, winner_sz, "%s", name1);
-        snprintf(status_text, status_sz, "Game over. Press M for rematch.");
-        return;
-    }
-
-    if (strncmp(line, "REPICK_OK", 9) == 0)
-    {
-        snprintf(status_text, status_sz, "Repick submitted");
-        return;
-    }
-
-    if (strcmp(line, "REPICK_WAITING") == 0)
-    {
-        snprintf(status_text, status_sz, "Waiting for other players to repick");
-        return;
-    }
-
-    if (strncmp(line, "ERROR ", 6) == 0)
-    {
-        snprintf(status_text, status_sz, "%s", line);
-        return;
-    }
-}
-
-static void pump_network(
-    Player *net_player,
-    GuiPlayer gui_players[],
-    const char *my_name,
-    char *registered_name,
-    size_t registered_name_sz,
-    const char *pending_name,
-    int *name_check_pending,
-    int *name_registered,
-    char *status_text,
-    size_t status_sz,
-    int *repick_phase,
-    int *game_over,
-    int *can_attempt_join,
-    int *joined_match,
-    int *choice_confirmed,
-    int *spawn_confirmed,
-    char *selected_choice,
-    double *lobby_end_time,
-    double *setup_end_time,
-    double *round_end_time,
-    char *winner_name,
-    size_t winner_sz)
-{
-    while (1)
-    {
-        fd_set readfds;
-        FD_ZERO(&readfds);
-        FD_SET(net_player->fd, &readfds);
-
-        struct timeval tv;
-        tv.tv_sec = 0;
-        tv.tv_usec = 0;
-
-        int ready = select(net_player->fd + 1, &readfds, NULL, NULL, &tv);
-        if (ready < 0)
-        {
-            if (NET_INTERRUPTED(NET_LAST_ERROR()))
-                continue;
-            break;
-        }
-        if (ready == 0)
-        {
-            break;
-        }
-
-        int rc = read_into_player_buffer(net_player);
-        if (rc <= 0)
-        {
-            snprintf(status_text, status_sz, "Disconnected from server");
-            *game_over = 1;
-            break;
-        }
-
-        char line[MAX_LINE];
-        while (pop_line(net_player, line, sizeof(line)))
-        {
-            parse_server_line(
-                line,
-                gui_players,
-                my_name,
-                registered_name,
-                registered_name_sz,
-                pending_name,
-                name_check_pending,
-                name_registered,
-                status_text,
-                status_sz,
-                repick_phase,
-                game_over,
-                can_attempt_join,
-                joined_match,
-                choice_confirmed,
-                spawn_confirmed,
-                selected_choice,
-                lobby_end_time,
-                setup_end_time,
-                round_end_time,
-                winner_name,
-                winner_sz);
-        }
-    }
 }
 
 static void draw_grid(void)
@@ -606,39 +115,20 @@ int main(int argc, char **argv)
         initial_name = argv[1];
     }
 
-    socket_t fd = connect_to_server(host);
+    if (net_init() != 0)
+        fatal("WSAStartup");
+
+    socket_t fd = connect_to_server(host, PORT);
+    if (fd == INVALID_SOCKET)
+        fatal("connect");
 
     Player net_player;
     memset(&net_player, 0, sizeof(net_player));
     net_player.fd = fd;
     send_line(fd, "GET_STATE");
 
-    GuiPlayer gui_players[MAX_PLAYERS];
-    memset(gui_players, 0, sizeof(gui_players));
-
-    char status_text[256] = "Connected";
-    char name_input[MAX_NAME] = "";
-    char pending_name[MAX_NAME] = "";
-    char my_name[MAX_NAME] = "";
-    char winner_name[MAX_NAME] = "";
-    int name_registered = 0;
-    int name_check_pending = 0;
-    int state_request_sent = 0;
-    int name_box_active = 0;
-    int repick_phase = 0;
-    int game_over = 0;
-
-    int can_attempt_join = 0;
-    int joined_match = 0;
-    int choice_confirmed = 0;
-    int spawn_confirmed = 0;
-    char selected_choice = 0;
-
-    double lobby_end_time = 0.0;
-    double setup_end_time = 0.0;
-    double round_end_time = 0.0;
-
-    snprintf(name_input, sizeof(name_input), "%s", initial_name);
+    GuiState state;
+    init_gui_state(&state, initial_name);
 
     InitWindow(WINDOW_W, WINDOW_H, "RPS Battle Royale");
     SetTargetFPS(60);
@@ -651,96 +141,74 @@ int main(int argc, char **argv)
 
     while (!WindowShouldClose())
     {
-        pump_network(
-            &net_player,
-            gui_players,
-            my_name,
-            my_name,
-            sizeof(my_name),
-            pending_name,
-            &name_check_pending,
-            &name_registered,
-            status_text,
-            sizeof(status_text),
-            &repick_phase,
-            &game_over,
-            &can_attempt_join,
-            &joined_match,
-            &choice_confirmed,
-            &spawn_confirmed,
-            &selected_choice,
-            &lobby_end_time,
-            &setup_end_time,
-            &round_end_time,
-            winner_name,
-            sizeof(winner_name));
+        pump_network(&net_player, &state);
 
         Vector2 mouse = GetMousePosition();
 
-        if (name_box_active && !name_registered)
+        if (state.name_box_active && !state.name_registered)
         {
             int ch = GetCharPressed();
             while (ch > 0)
             {
-                size_t len = strlen(name_input);
-                if (len < sizeof(name_input) - 1 && is_valid_name_char(ch))
+                size_t len = strlen(state.name_input);
+                if (len < sizeof(state.name_input) - 1 && is_valid_name_char(ch))
                 {
-                    name_input[len] = (char)ch;
-                    name_input[len + 1] = '\0';
+                    state.name_input[len] = (char)ch;
+                    state.name_input[len + 1] = '\0';
                 }
                 ch = GetCharPressed();
             }
 
             if (IsKeyPressed(KEY_BACKSPACE))
             {
-                size_t len = strlen(name_input);
+                size_t len = strlen(state.name_input);
                 if (len > 0)
                 {
-                    name_input[len - 1] = '\0';
+                    state.name_input[len - 1] = '\0';
                 }
             }
 
-            if (IsKeyPressed(KEY_ENTER) && !name_check_pending && name_input[0] != '\0')
+            if (IsKeyPressed(KEY_ENTER) && !state.name_check_pending && state.name_input[0] != '\0')
             {
-                snprintf(pending_name, sizeof(pending_name), "%s", name_input);
-                send_line(fd, "HELLO %s", pending_name);
-                name_check_pending = 1;
-                state_request_sent = 0;
-                snprintf(status_text, sizeof(status_text), "Checking name '%s'...", pending_name);
+                snprintf(state.pending_name, sizeof(state.pending_name), "%s", state.name_input);
+                send_line(fd, "HELLO %s", state.pending_name);
+                state.name_check_pending = 1;
+                state.state_request_sent = 0;
+                snprintf(state.status_text, sizeof(state.status_text), "Checking name '%s'...", state.pending_name);
             }
         }
 
         if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
         {
-            if (CheckCollisionPointRec(mouse, nameBox) && !name_registered)
+            if (CheckCollisionPointRec(mouse, nameBox) && !state.name_registered)
             {
-                name_box_active = 1;
+                state.name_box_active = 1;
             }
-            else if (CheckCollisionPointRec(mouse, nameBtn) && !name_registered)
+            else if (CheckCollisionPointRec(mouse, nameBtn) && !state.name_registered)
             {
-                name_box_active = 0;
-                if (!name_check_pending && name_input[0] != '\0')
+                state.name_box_active = 0;
+                if (!state.name_check_pending && state.name_input[0] != '\0')
                 {
-                    snprintf(pending_name, sizeof(pending_name), "%s", name_input);
-                    send_line(fd, "HELLO %s", pending_name);
-                    name_check_pending = 1;
-                    state_request_sent = 0;
-                    snprintf(status_text, sizeof(status_text), "Checking name '%s'...", pending_name);
+                    snprintf(state.pending_name, sizeof(state.pending_name), "%s", state.name_input);
+                    send_line(fd, "HELLO %s", state.pending_name);
+                    state.name_check_pending = 1;
+                    state.state_request_sent = 0;
+                    snprintf(state.status_text, sizeof(state.status_text), "Checking name '%s'...", state.pending_name);
                 }
             }
             else
             {
-                name_box_active = 0;
+                state.name_box_active = 0;
             }
         }
 
-        if (!state_request_sent)
+        if (!state.state_request_sent)
         {
             send_line(fd, "GET_STATE");
-            state_request_sent = 1;
+            state.state_request_sent = 1;
         }
 
-        if (name_registered && !game_over && can_attempt_join && !joined_match && !repick_phase &&
+        if (state.name_registered && !state.game_over && state.can_attempt_join && !state.joined_match && !state.repick_phase &&
             IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
         {
 
@@ -768,7 +236,7 @@ int main(int argc, char **argv)
             }
         }
 
-        if (!game_over && repick_phase)
+        if (!state.game_over && state.repick_phase)
         {
             if (IsKeyPressed(KEY_R))
             {
@@ -784,7 +252,7 @@ int main(int argc, char **argv)
             }
         }
 
-        if (game_over && IsKeyPressed(KEY_M))
+        if (state.game_over && IsKeyPressed(KEY_M))
         {
             send_line(fd, "REMATCH");
         }
@@ -793,7 +261,7 @@ int main(int argc, char **argv)
         ClearBackground(RAYWHITE);
 
         draw_grid();
-        draw_players(gui_players);
+        draw_players(state.players);
 
         int panel_x = GRID_ORIGIN_X + GRID_W * CELL_SIZE + 40;
         int panel_y = GRID_ORIGIN_Y;
@@ -802,13 +270,13 @@ int main(int argc, char **argv)
         panel_y += 50;
 
         char me_buf[64];
-        if (name_registered)
+        if (state.name_registered)
         {
-            snprintf(me_buf, sizeof(me_buf), "You: %s", my_name);
+            snprintf(me_buf, sizeof(me_buf), "You: %s", state.my_name);
         }
-        else if (pending_name[0] != '\0')
+        else if (state.pending_name[0] != '\0')
         {
-            snprintf(me_buf, sizeof(me_buf), "You: %s (checking)", pending_name);
+            snprintf(me_buf, sizeof(me_buf), "You: %s (checking)", state.pending_name);
         }
         else
         {
@@ -817,13 +285,13 @@ int main(int argc, char **argv)
         DrawText(me_buf, panel_x, panel_y, 20, DARKBLUE);
         panel_y += 28;
 
-        DrawText(status_text, panel_x, panel_y, 18, DARKGRAY);
+        DrawText(state.status_text, panel_x, panel_y, 18, DARKGRAY);
         panel_y += 35;
 
-        if (selected_choice == 'R' || selected_choice == 'P' || selected_choice == 'S')
+        if (state.selected_choice == 'R' || state.selected_choice == 'P' || state.selected_choice == 'S')
         {
             char choice_buf[64];
-            snprintf(choice_buf, sizeof(choice_buf), "Selected choice: %c", selected_choice);
+            snprintf(choice_buf, sizeof(choice_buf), "Selected choice: %c", state.selected_choice);
             DrawText(choice_buf, panel_x, panel_y, 20, BLACK);
             panel_y += 28;
         }
@@ -833,40 +301,40 @@ int main(int argc, char **argv)
             panel_y += 28;
         }
 
-        if (!game_over && lobby_end_time > GetTime())
+        if (!state.game_over && state.lobby_end_time > GetTime())
         {
-            int sec = (int)(lobby_end_time - GetTime() + 0.999);
+            int sec = (int)(state.lobby_end_time - GetTime() + 0.999);
             char buf[64];
             snprintf(buf, sizeof(buf), "Join window: %d", sec);
             DrawText(buf, panel_x, panel_y, 20, MAROON);
             panel_y += 28;
         }
 
-        if (!game_over && setup_end_time > GetTime())
+        if (!state.game_over && state.setup_end_time > GetTime())
         {
-            int sec = (int)(setup_end_time - GetTime() + 0.999);
+            int sec = (int)(state.setup_end_time - GetTime() + 0.999);
             char buf[64];
             snprintf(buf, sizeof(buf), "Setup time left: %d", sec);
             DrawText(buf, panel_x, panel_y, 20, MAROON);
             panel_y += 28;
         }
 
-        if (!game_over && round_end_time > GetTime() && !repick_phase)
+        if (!state.game_over && state.round_end_time > GetTime() && !state.repick_phase)
         {
-            int sec = (int)(round_end_time - GetTime() + 0.999);
+            int sec = (int)(state.round_end_time - GetTime() + 0.999);
             char buf[64];
             snprintf(buf, sizeof(buf), "Round ends in: %d", sec);
             DrawText(buf, panel_x, panel_y, 20, MAROON);
             panel_y += 28;
         }
 
-        if (!joined_match && can_attempt_join)
+        if (!state.joined_match && state.can_attempt_join)
         {
             DrawText("Click Rock/Paper/Scissors, then click a grid tile.", panel_x, panel_y, 18, BLACK);
             panel_y += 26;
         }
 
-        if (repick_phase)
+        if (state.repick_phase)
         {
             DrawText("REPICK PHASE", panel_x, panel_y, 24, RED);
             panel_y += 28;
@@ -874,10 +342,10 @@ int main(int argc, char **argv)
             panel_y += 28;
         }
 
-        if (game_over)
+        if (state.game_over)
         {
             char end_buf[128];
-            snprintf(end_buf, sizeof(end_buf), "Winner: %s", winner_name);
+            snprintf(end_buf, sizeof(end_buf), "Winner: %s", state.winner_name);
             DrawText("GAME OVER", panel_x, panel_y, 28, RED);
             panel_y += 35;
             DrawText(end_buf, panel_x, panel_y, 22, BLACK);
@@ -889,28 +357,28 @@ int main(int argc, char **argv)
         draw_legend_box(panel_x, panel_y);
         panel_y += 145;
 
-        DrawRectangleRec(rockBtn, selected_choice == 'R' ? PINK : LIGHTGRAY);
+        DrawRectangleRec(rockBtn, state.selected_choice == 'R' ? PINK : LIGHTGRAY);
         DrawRectangleLinesEx(rockBtn, 2, BLACK);
         DrawText("Rock", (int)rockBtn.x + 28, (int)rockBtn.y + 10, 20, BLACK);
 
-        DrawRectangleRec(paperBtn, selected_choice == 'P' ? SKYBLUE : LIGHTGRAY);
+        DrawRectangleRec(paperBtn, state.selected_choice == 'P' ? SKYBLUE : LIGHTGRAY);
         DrawRectangleLinesEx(paperBtn, 2, BLACK);
         DrawText("Paper", (int)paperBtn.x + 24, (int)paperBtn.y + 10, 20, BLACK);
 
-        DrawRectangleRec(scissorsBtn, selected_choice == 'S' ? LIME : LIGHTGRAY);
+        DrawRectangleRec(scissorsBtn, state.selected_choice == 'S' ? LIME : LIGHTGRAY);
         DrawRectangleLinesEx(scissorsBtn, 2, BLACK);
         DrawText("Scissors", (int)scissorsBtn.x + 20, (int)scissorsBtn.y + 10, 20, BLACK);
 
         DrawText("Name:", (int)nameBox.x, (int)nameBox.y - 24, 20, DARKGRAY);
-        DrawRectangleRec(nameBox, name_box_active ? WHITE : LIGHTGRAY);
-        DrawRectangleLinesEx(nameBox, 2, name_box_active ? BLUE : DARKGRAY);
-        DrawText(name_input[0] ? name_input : "type_name_here", (int)nameBox.x + 10, (int)nameBox.y + 10, 20, BLACK);
+        DrawRectangleRec(nameBox, state.name_box_active ? WHITE : LIGHTGRAY);
+        DrawRectangleLinesEx(nameBox, 2, state.name_box_active ? BLUE : DARKGRAY);
+        DrawText(state.name_input[0] ? state.name_input : "type_name_here", (int)nameBox.x + 10, (int)nameBox.y + 10, 20, BLACK);
 
-        DrawRectangleRec(nameBtn, (!name_registered && !name_check_pending) ? LIGHTGRAY : GRAY);
+        DrawRectangleRec(nameBtn, (!state.name_registered && !state.name_check_pending) ? LIGHTGRAY : GRAY);
         DrawRectangleLinesEx(nameBtn, 2, BLACK);
         DrawText("Set Name", (int)nameBtn.x + 14, (int)nameBtn.y + 10, 20, BLACK);
 
-        if (!name_registered)
+        if (!state.name_registered)
         {
             DrawText("Set a unique name before joining.", panel_x, WINDOW_H - 145, 18, MAROON);
         }

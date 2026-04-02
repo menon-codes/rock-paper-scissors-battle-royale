@@ -4,6 +4,34 @@
 #include <stdio.h>
 #include <string.h>
 
+socket_t connect_to_server(const char *host, int port)
+{
+    socket_t fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd == INVALID_SOCKET)
+    {
+        return INVALID_SOCKET;
+    }
+
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons((unsigned short)port);
+
+    if (inet_pton(AF_INET, host, &addr.sin_addr) <= 0)
+    {
+        CLOSESOCKET(fd);
+        return INVALID_SOCKET;
+    }
+
+    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
+    {
+        CLOSESOCKET(fd);
+        return INVALID_SOCKET;
+    }
+
+    return fd;
+}
+
 int send_line(socket_t fd, const char *fmt, ...)
 {
     char buf[MAX_LINE];

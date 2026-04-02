@@ -112,20 +112,8 @@ int main(int argc, char **argv)
     if (net_init() != 0)
         fatal("WSAStartup");
 
-    socket_t fd = socket(AF_INET, SOCK_STREAM, 0);
+    socket_t fd = connect_to_server(host, PORT);
     if (fd == INVALID_SOCKET)
-        fatal("socket");
-
-    struct sockaddr_in addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(PORT);
-
-    if (inet_pton(AF_INET, host, &addr.sin_addr) <= 0)
-    {
-        fatal("inet_pton");
-    }
-    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
     {
         fatal("connect");
     }

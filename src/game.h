@@ -3,6 +3,21 @@
 
 #include "common.h"
 
+static inline int player_is_registered(const Player *p)
+{
+	return p->connected && p->registered;
+}
+
+static inline int player_is_admitted(const Player *p)
+{
+	return p->connected && p->registered && p->admitted;
+}
+
+static inline int player_is_alive(const Player *p)
+{
+	return p->connected && p->registered && p->admitted && p->alive;
+}
+
 void init_server_state(ServerState *s);
 
 int admitted_count(ServerState *s);

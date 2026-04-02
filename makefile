@@ -36,8 +36,12 @@ MKDIR_OBJ=mkdir -p $(OBJ_DIR)
 endif
 
 SERVER_OBJ=$(OBJ_DIR)/server.o
+SERVER_STATE_OBJ=$(OBJ_DIR)/server_state.o
+SERVER_COMMANDS_OBJ=$(OBJ_DIR)/server_commands.o
 CLIENT_TEXT_OBJ=$(OBJ_DIR)/client_text.o
 CLIENT_GUI_OBJ=$(OBJ_DIR)/client_gui.o
+CLIENT_GUI_NETWORK_OBJ=$(OBJ_DIR)/client_gui_network.o
+CLIENT_GUI_MESSAGES_OBJ=$(OBJ_DIR)/client_gui_messages.o
 PROTOCOL_OBJ=$(OBJ_DIR)/protocol.o
 GAME_OBJ=$(OBJ_DIR)/game.o
 
@@ -47,22 +51,34 @@ CLIENT_GUI_BIN=$(BIN_DIR)/client_gui
 
 all: $(SERVER_BIN) $(CLIENT_TEXT_BIN) $(CLIENT_GUI_BIN)
 
-$(SERVER_BIN): $(SERVER_OBJ) $(PROTOCOL_OBJ) $(GAME_OBJ) | dirs
+$(SERVER_BIN): $(SERVER_OBJ) $(SERVER_STATE_OBJ) $(SERVER_COMMANDS_OBJ) $(PROTOCOL_OBJ) $(GAME_OBJ) | dirs
 	$(CC) $(CFLAGS) -DPORT=$(PORT) -o $@ $^ $(SOCKET_LIBS)
 
 $(CLIENT_TEXT_BIN): $(CLIENT_TEXT_OBJ) $(PROTOCOL_OBJ) | dirs
 	$(CC) $(CFLAGS) -DPORT=$(PORT) -o $@ $^ $(SOCKET_LIBS)
 
-$(CLIENT_GUI_BIN): $(CLIENT_GUI_OBJ) $(PROTOCOL_OBJ) | dirs
+$(CLIENT_GUI_BIN): $(CLIENT_GUI_OBJ) $(CLIENT_GUI_NETWORK_OBJ) $(CLIENT_GUI_MESSAGES_OBJ) $(PROTOCOL_OBJ) | dirs
 	$(CC) $(CFLAGS) $(RAYLIB_CFLAGS) -DPORT=$(PORT) -o $@ $^ $(RAYLIB_LIBS) $(SOCKET_LIBS)
 
 $(SERVER_OBJ): $(SRC_DIR)/server.c $(SRC_DIR)/common.h $(SRC_DIR)/protocol.h $(SRC_DIR)/game.h | dirs
+	$(CC) $(CFLAGS) $(CPPFLAGS) -c -o $@ $<
+
+$(SERVER_STATE_OBJ): $(SRC_DIR)/server_state.c $(SRC_DIR)/common.h $(SRC_DIR)/server_state.h $(SRC_DIR)/protocol.h $(SRC_DIR)/game.h | dirs
+	$(CC) $(CFLAGS) $(CPPFLAGS) -c -o $@ $<
+
+$(SERVER_COMMANDS_OBJ): $(SRC_DIR)/server_commands.c $(SRC_DIR)/common.h $(SRC_DIR)/server_commands.h $(SRC_DIR)/server_state.h $(SRC_DIR)/protocol.h $(SRC_DIR)/game.h | dirs
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c -o $@ $<
 
 $(CLIENT_TEXT_OBJ): $(SRC_DIR)/client_text.c $(SRC_DIR)/common.h $(SRC_DIR)/protocol.h | dirs
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c -o $@ $<
 
 $(CLIENT_GUI_OBJ): $(SRC_DIR)/client_gui.c $(SRC_DIR)/common.h $(SRC_DIR)/protocol.h | dirs
+	$(CC) $(CFLAGS) $(CPPFLAGS) $(RAYLIB_CFLAGS) -c -o $@ $<
+
+$(CLIENT_GUI_NETWORK_OBJ): $(SRC_DIR)/client_gui_network.c $(SRC_DIR)/common.h $(SRC_DIR)/client_gui_state.h $(SRC_DIR)/protocol.h | dirs
+	$(CC) $(CFLAGS) $(CPPFLAGS) $(RAYLIB_CFLAGS) -c -o $@ $<
+
+$(CLIENT_GUI_MESSAGES_OBJ): $(SRC_DIR)/client_gui_messages.c $(SRC_DIR)/common.h $(SRC_DIR)/client_gui_state.h | dirs
 	$(CC) $(CFLAGS) $(CPPFLAGS) $(RAYLIB_CFLAGS) -c -o $@ $<
 
 $(PROTOCOL_OBJ): $(SRC_DIR)/protocol.c $(SRC_DIR)/common.h $(SRC_DIR)/protocol.h | dirs
