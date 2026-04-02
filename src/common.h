@@ -1,6 +1,15 @@
 #ifndef COMMON_H
 #define COMMON_H
 
+/*
+ * Cross-platform definitions shared by client and server binaries.
+ *
+ * This header centralizes:
+ * - socket compatibility wrappers for Windows and POSIX;
+ * - global protocol/game constants;
+ * - canonical game/server state structs used across modules.
+ */
+
 #if defined(_WIN32) || defined(_WIN64) || defined(_MSC_VER) || defined(__MINGW32__) || defined(__MINGW64__)
 #define RPS_WINDOWS_SOCKETS 1
 #elif defined(__has_include)
@@ -112,38 +121,50 @@ static inline int net_set_nonblocking(socket_t fd)
 
 typedef enum
 {
+    /* Waiting for players to submit CHOICE/SPAWN and be admitted. */
     PHASE_LOBBY_OPEN,
+    /* Lobby closed; admitted players are finalizing setup. */
     PHASE_SETUP,
+    /* Active elimination round in progress. */
     PHASE_ROUND_ACTIVE,
+    /* Tie breaker phase where alive players re-pick R/P/S. */
     PHASE_REPICK,
+    /* Match ended; rematch may reset back to lobby. */
     PHASE_GAME_OVER
 } Phase;
 
 typedef struct
 {
+    /* Connection identity. */
     socket_t fd;
     int id;
 
+    /* Lifecycle flags. */
     int connected;
     int registered;
     int admitted;
 
+    /* Round participation flags. */
     int alive;
     int waiting;
     int in_round;
 
+    /* Setup and choice state. */
     int choice_chosen;
     int spawn_chosen;
 
+    /* REPICK-only transient state. */
     int repick_submitted;
     char repick_choice;
 
+    /* Public gameplay identity/state. */
     char name[MAX_NAME];
     char choice;
 
     int x;
     int y;
 
+    /* Per-player line-oriented network buffers. */
     char inbuf[INBUF_SIZE];
     size_t inbuf_used;
 
@@ -153,10 +174,17 @@ typedef struct
 
 typedef struct
 {
+    /* Fixed slots; empty slot has connected == 0. */
     Player players[MAX_PLAYERS];
+
+    /* Monotonic identifier assigned when a player slot is created. */
     int next_id;
+
+    /* Match progression metadata. */
     int round_no;
     Phase phase;
+
+    /* Server timers (epoch seconds). */
     time_t join_deadline;
     time_t setup_deadline;
     time_t round_deadline;
@@ -164,6 +192,7 @@ typedef struct
 
 typedef struct
 {
+    /* Indexes into ServerState.players for an RPS matchup pair. */
     int a;
     int b;
 } Pair;

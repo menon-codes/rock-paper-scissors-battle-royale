@@ -6,6 +6,12 @@
 
 #include "protocol.h"
 
+/*
+ * GUI networking glue:
+ * - initializes local UI state
+ * - performs non-blocking socket draining each frame
+ */
+
 void init_gui_state(GuiState *state, const char *initial_name)
 {
 	memset(state, 0, sizeof(*state));
@@ -15,6 +21,7 @@ void init_gui_state(GuiState *state, const char *initial_name)
 
 void pump_network(Player *net_player, GuiState *state)
 {
+	/* Drain all currently ready data so rendering sees the newest state this frame. */
 	while (1)
 	{
 		fd_set readfds;

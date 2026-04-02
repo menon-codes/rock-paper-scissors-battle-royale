@@ -10,6 +10,13 @@
 #include "server_commands.h"
 #include "server_state.h"
 
+/*
+ * Server event loop:
+ * - accepts new clients
+ * - drains reads and queued writes
+ * - advances timer-driven state transitions
+ */
+
 #ifndef PORT
 #define PORT 4242
 #endif
@@ -57,6 +64,7 @@ static socket_t create_listen_socket(void)
 
 static int build_select_sets(socket_t listen_fd, ServerState *state, fd_set *readfds, fd_set *writefds)
 {
+    /* Track readable sockets for ingress and writable sockets with pending output. */
     FD_ZERO(readfds);
     FD_ZERO(writefds);
 

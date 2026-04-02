@@ -7,6 +7,13 @@
 #include "game.h"
 #include "protocol.h"
 
+/*
+ * State transition engine and server-side broadcasts.
+ *
+ * This module is responsible for phase changes, snapshots, round resolution,
+ * and join/rematch lifecycle updates.
+ */
+
 typedef void (*PhaseHandler)(ServerState *s);
 
 typedef struct
@@ -40,6 +47,7 @@ static int queue_line_checked(Player *p, const char *fmt, ...)
 
 static void queue_broadcast(ServerState *s, const char *fmt, ...)
 {
+	/* Queue to all connected clients first, then drop any sockets that overflowed. */
 	char line[MAX_LINE];
 	int to_drop[MAX_PLAYERS];
 	int drop_count = 0;
@@ -73,6 +81,7 @@ static void queue_broadcast(ServerState *s, const char *fmt, ...)
 
 static void broadcast_game_state(ServerState *s)
 {
+	/* Push a full STATE_BEGIN..STATE_END snapshot to each registered player. */
 	int dropped = 0;
 
 	for (int i = 0; i < MAX_PLAYERS; i++)

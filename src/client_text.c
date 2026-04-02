@@ -5,6 +5,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+/*
+ * Terminal client for manual protocol testing and lightweight gameplay.
+ *
+ * Uses select() to multiplex server socket input and stdin commands.
+ */
+
 #ifndef PORT
 #define PORT 4242
 #endif
@@ -17,6 +23,7 @@ static void fatal(const char *msg)
 
 static int prompt_choice(char *out_choice)
 {
+    /* Interactive validator for R/P/S input. */
     char buf[64];
 
     while (1)
@@ -67,6 +74,7 @@ static int prompt_int(const char *prompt, int *out_value)
 
 static int prompt_join_inputs(char *choice, int *spawn_x, int *spawn_y)
 {
+    /* Collect all data required for a valid join attempt. */
     if (!prompt_choice(choice))
     {
         return 0;
@@ -152,6 +160,7 @@ int main(int argc, char **argv)
 
     while (1)
     {
+        /* Block until either server data arrives or user types a command. */
         fd_set readfds;
         FD_ZERO(&readfds);
         FD_SET(fd, &readfds);
@@ -167,6 +176,7 @@ int main(int argc, char **argv)
 
         if (FD_ISSET(fd, &readfds))
         {
+            /* Print all complete server lines currently buffered. */
             int rc = read_into_player_buffer(&me);
             if (rc <= 0)
             {
@@ -183,6 +193,7 @@ int main(int argc, char **argv)
 
         if (FD_ISSET(STDIN_FILENO, &readfds))
         {
+            /* Single-key command dispatch for quick manual testing. */
             char buf[64];
             if (!fgets(buf, sizeof(buf), stdin))
             {

@@ -8,6 +8,13 @@
 #include "protocol.h"
 #include "server_state.h"
 
+/*
+ * Command parser and dispatcher for one client line at a time.
+ *
+ * Each handler validates context (phase/player status), mutates player/server
+ * state, and queues protocol responses.
+ */
+
 typedef void (*CommandHandler)(ServerState *s, int idx, const char *line);
 
 typedef struct
@@ -25,6 +32,7 @@ static long seconds_left(time_t deadline)
 
 static int parse_rps_choice(const char *line, int offset, char *out_choice)
 {
+	/* Accept uppercase/lowercase and normalize to uppercase. */
 	char choice = line[offset];
 
 	if (choice >= 'a' && choice <= 'z')
@@ -330,6 +338,7 @@ static int command_matches(const CommandDispatchEntry *entry, const char *line)
 void handle_command(ServerState *s, int idx, const char *line)
 {
 	Player *p = &s->players[idx];
+	/* Prefix/keyword dispatch table for supported client commands. */
 	static const CommandDispatchEntry dispatch[] = {
 		{"HELLO ", 0, handle_hello_command},
 		{"GET_STATE", 1, handle_get_state_command},

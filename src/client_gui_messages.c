@@ -6,6 +6,12 @@
 
 #include "raylib.h"
 
+/*
+ * GUI message parser:
+ * - consumes individual server protocol lines
+ * - updates GuiState projection and status text for rendering
+ */
+
 typedef void (*LineParser)(GuiState *state, const char *line);
 
 typedef struct
@@ -56,6 +62,7 @@ static void clear_gui_players(GuiPlayer players[])
 
 static void parse_state_snapshot_line(GuiState *state, const char *line)
 {
+	/* Snapshot messages are authoritative; incremental messages are advisory UI hints. */
 	char name1[MAX_NAME], name2[MAX_NAME], winner[MAX_NAME];
 	char choice;
 	int x, y, alive, waiting;

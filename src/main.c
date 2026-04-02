@@ -4,6 +4,13 @@
 #include <stdbool.h>
 #include <time.h>
 
+/*
+ * Standalone Raylib prototype that visualizes R/P/S sprites on a random field.
+ *
+ * Useful as an asset sanity check and a rendering smoke test independent of
+ * networking/game-server code.
+ */
+
 #ifndef ASSET_DIR_PATH
 #define ASSET_DIR_PATH "assets"
 #endif
@@ -23,6 +30,7 @@ typedef struct SpriteInstance
 
 static bool resolve_asset_path(const char *file_name, char *resolved_path, size_t resolved_path_size)
 {
+    /* Probe common run locations so binaries work from different cwd layouts. */
     const char *asset_dirs[] = {
         ASSET_DIR_PATH,
         "assets",
@@ -43,6 +51,7 @@ static bool resolve_asset_path(const char *file_name, char *resolved_path, size_
 
 static Texture2D load_texture_with_fallback(const char *path, Color fallback_color, bool *loaded_from_file)
 {
+    /* Fallback image keeps the prototype running even if one texture fails. */
     Texture2D texture = LoadTexture(path);
     if (texture.id != 0)
     {
@@ -112,6 +121,7 @@ int main(void)
 
     for (int i = 0; i < total_sprites; ++i)
     {
+        /* Group sprites by kind (R, P, S) and place each randomly on screen. */
         SpriteKind kind = (SpriteKind)(i / sprites_per_kind);
         int x = GetRandomValue(0, screen_width - sprite_draw_size);
         int y = GetRandomValue(0, screen_height - sprite_draw_size);

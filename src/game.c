@@ -4,8 +4,16 @@
 #include <string.h>
 #include <time.h>
 
+/*
+ * Core match computations:
+ * - readiness checks
+ * - round setup
+ * - pairing and RPS resolution
+ */
+
 static int dist2(const Player *a, const Player *b)
 {
+    /* Squared distance avoids floating point and preserves ordering. */
     int dx = a->x - b->x;
     int dy = a->y - b->y;
     return dx * dx + dy * dy;
@@ -139,6 +147,7 @@ int rps_result(char a, char b)
 
 int build_pairs(ServerState *s, Pair pairs[], int max_pairs, int *bye_index)
 {
+    /* Collect eligible round participants first, then greedily pair nearest ones. */
     int unmatched[MAX_PLAYERS];
     int unmatched_count = 0;
 

@@ -4,6 +4,13 @@
 #include <stdio.h>
 #include <string.h>
 
+/*
+ * Line-based protocol transport helpers shared by client and server.
+ *
+ * This file handles framing (\n-terminated messages), buffering, and
+ * non-blocking send/recv behavior.
+ */
+
 socket_t connect_to_server(const char *host, int port)
 {
     socket_t fd = socket(AF_INET, SOCK_STREAM, 0);

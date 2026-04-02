@@ -9,6 +9,13 @@
 
 #include "raylib.h"
 
+/*
+ * Interactive GUI client:
+ * - drives frame-based input + rendering
+ * - polls network each frame through pump_network
+ * - maps UI actions to line protocol commands
+ */
+
 #ifndef PORT
 #define PORT 4242
 #endif
@@ -28,6 +35,7 @@ static void fatal(const char *msg)
 
 static Color choice_color(char c)
 {
+    /* Canonical color mapping for R/P/S markers in the grid and legend. */
     if (c == 'R')
         return RED;
     if (c == 'P')
@@ -39,6 +47,7 @@ static Color choice_color(char c)
 
 static int is_valid_name_char(int c)
 {
+    /* Keep names protocol-safe and easy to parse server-side. */
     return isalnum(c) || c == '_';
 }
 
@@ -141,6 +150,7 @@ int main(int argc, char **argv)
 
     while (!WindowShouldClose())
     {
+        /* Drain all currently available server messages before input/rendering. */
         pump_network(&net_player, &state);
 
         Vector2 mouse = GetMousePosition();
@@ -204,6 +214,7 @@ int main(int argc, char **argv)
 
         if (!state.state_request_sent)
         {
+            /* Request one fresh snapshot after significant local state transitions. */
             send_line(fd, "GET_STATE");
             state.state_request_sent = 1;
         }
@@ -211,6 +222,7 @@ int main(int argc, char **argv)
         if (state.name_registered && !state.game_over && state.can_attempt_join && !state.joined_match && !state.repick_phase &&
             IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
         {
+            /* Join flow: choose CHOICE via button, then set SPAWN via grid click. */
 
             if (CheckCollisionPointRec(mouse, rockBtn))
             {
@@ -260,6 +272,7 @@ int main(int argc, char **argv)
         BeginDrawing();
         ClearBackground(RAYWHITE);
 
+        /* World view (left) + control panel (right) are drawn every frame. */
         draw_grid();
         draw_players(state.players);
 
