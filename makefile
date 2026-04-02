@@ -7,6 +7,7 @@ TEST_DIR=tests
 BUILD_DIR=build
 OBJ_DIR=$(BUILD_DIR)/obj
 BIN_DIR=$(BUILD_DIR)/bin
+TEST_BIN_DIR=$(BUILD_DIR)/tests
 
 RAYLIB_BUILD_DIR=$(BUILD_DIR)/_deps/raylib-build/raylib
 RAYLIB_LOCAL_HEADER=$(RAYLIB_BUILD_DIR)/include/raylib.h
@@ -30,10 +31,12 @@ ifeq ($(OS),Windows_NT)
 SOCKET_LIBS=-lws2_32
 MKDIR_BIN=if not exist "$(subst /,\,$(BIN_DIR))" mkdir "$(subst /,\,$(BIN_DIR))"
 MKDIR_OBJ=if not exist "$(subst /,\,$(OBJ_DIR))" mkdir "$(subst /,\,$(OBJ_DIR))"
+MKDIR_TEST_BIN=if not exist "$(subst /,\,$(TEST_BIN_DIR))" mkdir "$(subst /,\,$(TEST_BIN_DIR))"
 else
 SOCKET_LIBS=
 MKDIR_BIN=mkdir -p $(BIN_DIR)
 MKDIR_OBJ=mkdir -p $(OBJ_DIR)
+MKDIR_TEST_BIN=mkdir -p $(TEST_BIN_DIR)
 endif
 
 SERVER_OBJ=$(OBJ_DIR)/server.o
@@ -51,8 +54,8 @@ INTEGRATION_RUNNER_OBJ=$(OBJ_DIR)/integration_runner.o
 SERVER_BIN=$(BIN_DIR)/server
 CLIENT_TEXT_BIN=$(BIN_DIR)/client_text
 CLIENT_GUI_BIN=$(BIN_DIR)/client_gui
-TEST_BIN=$(BIN_DIR)/unit_tests
-INTEGRATION_TEST_BIN=$(BIN_DIR)/integration_tests
+TEST_BIN=$(TEST_BIN_DIR)/unit_tests
+INTEGRATION_TEST_BIN=$(TEST_BIN_DIR)/integration_tests
 
 all: $(SERVER_BIN) $(CLIENT_TEXT_BIN) $(CLIENT_GUI_BIN)
 
@@ -115,12 +118,14 @@ $(INTEGRATION_RUNNER_OBJ): $(TEST_DIR)/integration_runner.c $(SRC_DIR)/common.h 
 dirs:
 	$(MKDIR_BIN)
 	$(MKDIR_OBJ)
+	$(MKDIR_TEST_BIN)
 
 clean:
 ifeq ($(OS),Windows_NT)
 	-if exist "$(subst /,\,$(OBJ_DIR))" del /Q "$(subst /,\,$(OBJ_DIR))\*.o" 2>nul
 	-if exist "$(subst /,\,$(BIN_DIR))" del /Q "$(subst /,\,$(BIN_DIR))\server.exe" "$(subst /,\,$(BIN_DIR))\client_text.exe" "$(subst /,\,$(BIN_DIR))\client_gui.exe" 2>nul
-	-if exist "$(subst /,\,$(BIN_DIR))" del /Q "$(subst /,\,$(BIN_DIR))\server" "$(subst /,\,$(BIN_DIR))\client_text" "$(subst /,\,$(BIN_DIR))\client_gui" "$(subst /,\,$(BIN_DIR))\unit_tests" "$(subst /,\,$(BIN_DIR))\unit_tests.exe" "$(subst /,\,$(BIN_DIR))\integration_tests" "$(subst /,\,$(BIN_DIR))\integration_tests.exe" 2>nul
+	-if exist "$(subst /,\,$(BIN_DIR))" del /Q "$(subst /,\,$(BIN_DIR))\server" "$(subst /,\,$(BIN_DIR))\client_text" "$(subst /,\,$(BIN_DIR))\client_gui" 2>nul
+	-if exist "$(subst /,\,$(TEST_BIN_DIR))" del /Q "$(subst /,\,$(TEST_BIN_DIR))\unit_tests" "$(subst /,\,$(TEST_BIN_DIR))\unit_tests.exe" "$(subst /,\,$(TEST_BIN_DIR))\integration_tests" "$(subst /,\,$(TEST_BIN_DIR))\integration_tests.exe" 2>nul
 else
 	rm -f $(OBJ_DIR)/*.o $(SERVER_BIN) $(CLIENT_TEXT_BIN) $(CLIENT_GUI_BIN) $(TEST_BIN) $(INTEGRATION_TEST_BIN)
 endif

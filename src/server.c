@@ -84,23 +84,23 @@ static int build_select_sets(socket_t listen_fd, ServerState *state, fd_set *rea
     return maxfd;
 }
 
-static void accept_new_clients(socket_t listen_fd, fd_set *readfds, ServerState *state)
+static int accept_new_clients(socket_t listen_fd, fd_set *readfds, ServerState *state)
 {
     if (!FD_ISSET(listen_fd, readfds))
     {
-        return;
+        return 0;
     }
 
     socket_t client_fd = accept(listen_fd, NULL, NULL);
     if (client_fd == INVALID_SOCKET)
     {
-        return;
+        return 0;
     }
 
     if (net_set_nonblocking(client_fd) < 0)
     {
         CLOSESOCKET(client_fd);
-        return;
+        return 0;
     }
 
     int idx = add_player(state, client_fd);
@@ -110,11 +110,25 @@ static void accept_new_clients(socket_t listen_fd, fd_set *readfds, ServerState 
         {
             drop_player(state, idx, 0);
         }
-        return;
+        return 1;
     }
 
     (void)send_line(client_fd, "ERROR server_full");
     CLOSESOCKET(client_fd);
+    return 0;
+}
+
+static int connected_player_count(const ServerState *state)
+{
+    int count = 0;
+    for (int i = 0; i < MAX_PLAYERS; i++)
+    {
+        if (state->players[i].connected)
+        {
+            count++;
+        }
+    }
+    return count;
 }
 
 static void process_player_reads(ServerState *state, fd_set *readfds)
@@ -186,6 +200,9 @@ int main(void)
     }
 
     socket_t listen_fd = create_listen_socket();
+    const char *auto_exit_env = getenv("RPS_TEST_AUTO_EXIT");
+    int auto_exit_for_tests = (auto_exit_env != NULL && auto_exit_env[0] != '\0' && auto_exit_env[0] != '0');
+    int saw_client = 0;
 
     ServerState state;
     init_server_state(&state);
@@ -209,12 +226,21 @@ int main(void)
             fatal("select");
         }
 
-        accept_new_clients(listen_fd, &readfds, &state);
+        if (accept_new_clients(listen_fd, &readfds, &state))
+        {
+            saw_client = 1;
+        }
         process_player_reads(&state, &readfds);
         process_player_writes(&state, &writefds);
         process_timers(&state);
+
+        if (auto_exit_for_tests && saw_client && connected_player_count(&state) == 0)
+        {
+            break;
+        }
     }
 
+    CLOSESOCKET(listen_fd);
     net_cleanup();
     return 0;
 }

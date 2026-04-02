@@ -59,8 +59,10 @@ static void sleep_ms(int ms)
 static server_pid_t launch_server_process(void)
 {
 #if RPS_WINDOWS_SOCKETS
+	_putenv("RPS_TEST_AUTO_EXIT=1");
 	return _spawnl(_P_NOWAIT, "build/bin/server.exe", "build/bin/server.exe", NULL);
 #else
+	setenv("RPS_TEST_AUTO_EXIT", "1", 1);
 	pid_t pid = fork();
 	if (pid == 0)
 	{
@@ -82,14 +84,29 @@ static void stop_server_process(server_pid_t pid)
 	HANDLE h = OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, (DWORD)pid);
 	if (h != NULL)
 	{
-		TerminateProcess(h, 0);
-		WaitForSingleObject(h, 3000);
+		DWORD wait_rc = WaitForSingleObject(h, 2000);
+		if (wait_rc == WAIT_TIMEOUT)
+		{
+			TerminateProcess(h, 0);
+			WaitForSingleObject(h, 3000);
+		}
 		CloseHandle(h);
 	}
 #else
 	if (pid <= 0)
 	{
 		return;
+	}
+
+	for (int i = 0; i < 20; i++)
+	{
+		int status;
+		pid_t rc = waitpid(pid, &status, WNOHANG);
+		if (rc == pid)
+		{
+			return;
+		}
+		sleep_ms(100);
 	}
 
 	kill(pid, SIGTERM);
@@ -292,9 +309,18 @@ int main(void)
 	/* Give server time to bind/listen before connecting clients. */
 	sleep_ms(500);
 
+	/* Keep one client connected so test auto-exit does not trigger between subtests. */
+	TestClient keeper;
+	CHECK(connect_client(&keeper));
+	CHECK(wait_for_substring(&keeper, "INFO connected_send_HELLO_name", 2000) == 1);
+
 	test_handshake_and_duplicate_name();
 	test_join_and_left_broadcast();
 	test_get_state_and_repick_error();
+
+	try_quit(&keeper);
+	disconnect_client(&keeper);
+	sleep_ms(200);
 
 	stop_server_process(pid);
 	net_cleanup();
