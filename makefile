@@ -29,6 +29,7 @@ CPPFLAGS=-I$(SRC_DIR)
 
 ifeq ($(OS),Windows_NT)
 SOCKET_LIBS=-lws2_32
+MATH_LIBS=
 NCURSESW_CFLAGS=
 NCURSESW_LIBS=
 MKDIR_BIN=if not exist "$(subst /,\,$(BIN_DIR))" mkdir "$(subst /,\,$(BIN_DIR))"
@@ -36,6 +37,7 @@ MKDIR_OBJ=if not exist "$(subst /,\,$(OBJ_DIR))" mkdir "$(subst /,\,$(OBJ_DIR))"
 MKDIR_TEST_BIN=if not exist "$(subst /,\,$(TEST_BIN_DIR))" mkdir "$(subst /,\,$(TEST_BIN_DIR))"
 else
 SOCKET_LIBS=
+MATH_LIBS=-lm
 NCURSESW_CFLAGS=$(shell pkg-config --cflags ncursesw 2>/dev/null)
 NCURSESW_LIBS=$(shell pkg-config --libs ncursesw 2>/dev/null || echo -lncursesw -ltinfo)
 MKDIR_BIN=mkdir -p $(BIN_DIR)
@@ -76,7 +78,7 @@ integration-test: $(SERVER_BIN) $(INTEGRATION_TEST_BIN)
 test-all: test integration-test
 
 $(SERVER_BIN): $(SERVER_OBJ) $(SERVER_STATE_OBJ) $(SERVER_COMMANDS_OBJ) $(PROTOCOL_OBJ) $(GAME_OBJ) $(CHASE_SIMULATION_OBJ) | dirs
-	$(CC) $(CFLAGS) -DPORT=$(PORT) -o $@ $^ $(SOCKET_LIBS)
+	$(CC) $(CFLAGS) -DPORT=$(PORT) -o $@ $^ $(MATH_LIBS) $(SOCKET_LIBS)
 
 $(CLIENT_TEXT_BIN): $(CLIENT_TEXT_OBJ) $(CLIENT_GUI_NETWORK_OBJ) $(CLIENT_TEXT_MESSAGES_OBJ) $(PROTOCOL_OBJ) | dirs
 	$(CC) $(CFLAGS) $(NCURSESW_CFLAGS) -DPORT=$(PORT) -o $@ $^ $(NCURSESW_LIBS) $(SOCKET_LIBS)
@@ -85,7 +87,7 @@ $(CLIENT_GUI_BIN): $(CLIENT_GUI_OBJ) $(CLIENT_GUI_NETWORK_OBJ) $(CLIENT_GUI_MESS
 	$(CC) $(CFLAGS) $(RAYLIB_CFLAGS) -DPORT=$(PORT) -o $@ $^ $(RAYLIB_LIBS) $(SOCKET_LIBS)
 
 $(TEST_BIN): $(TEST_RUNNER_OBJ) $(SERVER_STATE_OBJ) $(SERVER_COMMANDS_OBJ) $(PROTOCOL_OBJ) $(GAME_OBJ) $(CHASE_SIMULATION_OBJ) | dirs
-	$(CC) $(CFLAGS) -DPORT=$(PORT) -o $@ $^ $(SOCKET_LIBS)
+	$(CC) $(CFLAGS) -DPORT=$(PORT) -o $@ $^ $(MATH_LIBS) $(SOCKET_LIBS)
 
 $(INTEGRATION_TEST_BIN): $(INTEGRATION_RUNNER_OBJ) $(PROTOCOL_OBJ) | dirs
 	$(CC) $(CFLAGS) -DPORT=$(PORT) -o $@ $^ $(SOCKET_LIBS)
@@ -106,7 +108,7 @@ $(CLIENT_GUI_OBJ): $(SRC_DIR)/client_gui.c $(SRC_DIR)/common.h $(SRC_DIR)/protoc
 	$(CC) $(CFLAGS) $(CPPFLAGS) $(RAYLIB_CFLAGS) -c -o $@ $<
 
 $(CLIENT_GUI_NETWORK_OBJ): $(SRC_DIR)/client_gui_network.c $(SRC_DIR)/common.h $(SRC_DIR)/client_gui_state.h $(SRC_DIR)/protocol.h | dirs
-	$(CC) $(CFLAGS) $(CPPFLAGS) $(RAYLIB_CFLAGS) -c -o $@ $<
+	$(CC) $(CFLAGS) $(CPPFLAGS) -c -o $@ $<
 
 $(CLIENT_GUI_MESSAGES_OBJ): $(SRC_DIR)/client_gui_messages.c $(SRC_DIR)/common.h $(SRC_DIR)/client_gui_state.h | dirs
 	$(CC) $(CFLAGS) $(CPPFLAGS) $(RAYLIB_CFLAGS) -c -o $@ $<
