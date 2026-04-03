@@ -119,6 +119,16 @@ static inline int net_set_nonblocking(socket_t fd)
 #endif
 }
 
+static inline double rps_now_seconds(void)
+{
+    struct timespec ts;
+    if (timespec_get(&ts, TIME_UTC) == TIME_UTC)
+    {
+        return (double)ts.tv_sec + (double)ts.tv_nsec / 1000000000.0;
+    }
+    return (double)time(NULL);
+}
+
 typedef enum
 {
     /* Waiting for players to submit CHOICE/SPAWN and be admitted. */
