@@ -165,7 +165,7 @@ int add_player(ServerState *s, socket_t fd)
 static void handle_hello_command(ServerState *s, int idx, const char *line)
 {
 	Player *p = &s->players[idx];
-	char name[MAX_NAME];
+	char name[MAX_NAME_LENGTH];
 
 	if (p->registered)
 	{

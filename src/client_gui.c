@@ -168,7 +168,7 @@ static void draw_legend_box(int x, int y)
 int main(int argc, char **argv)
 {
     const char *host = "127.0.0.1";
-    const char *initial_name = "player";
+    const char *initial_name = "?";
     AutoJoinConfig auto_join;
     memset(&auto_join, 0, sizeof(auto_join));
 

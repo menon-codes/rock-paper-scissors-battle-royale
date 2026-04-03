@@ -14,7 +14,7 @@ typedef struct
 {
 	/* Slot occupied by a known player from latest snapshot. */
 	int used;
-	char name[MAX_NAME];
+	char name[MAX_NAME_LENGTH];
 
 	/* Last known R/P/S type and board position (float-based coordinates). */
 	char choice;
@@ -33,10 +33,10 @@ typedef struct
 
 	/* UI text and local input buffers. */
 	char status_text[256];
-	char name_input[MAX_NAME];
-	char pending_name[MAX_NAME];
-	char my_name[MAX_NAME];
-	char winner_name[MAX_NAME];
+	char name_input[MAX_NAME_LENGTH];
+	char pending_name[MAX_NAME_LENGTH];
+	char my_name[MAX_NAME_LENGTH];
+	char winner_name[MAX_NAME_LENGTH];
 
 	/* Registration and snapshot synchronization flags. */
 	int name_registered;

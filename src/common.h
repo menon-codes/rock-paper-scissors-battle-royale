@@ -57,7 +57,7 @@
 #include <time.h>
 
 #define MAX_PLAYERS 32
-#define MAX_NAME 32
+#define MAX_NAME_LENGTH 32
 #define MAX_LINE 256
 #define INBUF_SIZE 1024
 #define OUTBUF_SIZE 8192
@@ -65,7 +65,7 @@
 #define GRID_W 10
 #define GRID_H 10
 
-#define JOIN_WINDOW_SECONDS 4 // 21 // 60
+#define JOIN_WINDOW_SECONDS 60
 #define SETUP_SECONDS 20
 #define ROUND_SECONDS 5
 
@@ -158,7 +158,7 @@ typedef struct
     char repick_choice;
 
     /* Public gameplay identity/state. */
-    char name[MAX_NAME];
+    char name[MAX_NAME_LENGTH];
     char choice;
 
     float x;

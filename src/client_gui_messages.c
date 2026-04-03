@@ -63,7 +63,7 @@ static void clear_gui_players(GuiPlayer players[])
 static void parse_state_snapshot_line(GuiState *state, const char *line)
 {
 	/* Snapshot messages are authoritative; incremental messages are advisory UI hints. */
-	char name1[MAX_NAME], name2[MAX_NAME], winner[MAX_NAME];
+	char name1[MAX_NAME_LENGTH], name2[MAX_NAME_LENGTH], winner[MAX_NAME_LENGTH];
 	char choice;
 	float x, y;
 	int alive, waiting;
@@ -181,7 +181,7 @@ static void parse_state_snapshot_line(GuiState *state, const char *line)
 
 static void parse_general_line(GuiState *state, const char *line)
 {
-	char name1[MAX_NAME];
+	char name1[MAX_NAME_LENGTH];
 	char choice;
 	float x, y;
 	long sec_long;

@@ -183,7 +183,7 @@ int all_alive_repicked(ServerState *s)
 
 void drop_player(ServerState *s, int idx, int announce)
 {
-	char name[MAX_NAME];
+	char name[MAX_NAME_LENGTH];
 	int should_announce = 0;
 
 	if (!s->players[idx].connected)
