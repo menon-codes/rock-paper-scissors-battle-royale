@@ -65,7 +65,8 @@ static void parse_state_snapshot_line(GuiState *state, const char *line)
 	/* Snapshot messages are authoritative; incremental messages are advisory UI hints. */
 	char name1[MAX_NAME], name2[MAX_NAME], winner[MAX_NAME];
 	char choice;
-	int x, y, alive, waiting;
+	float x, y;
+	int alive, waiting;
 	int round_no, seconds;
 
 	if (strcmp(line, "STATE_BEGIN") == 0)
@@ -79,7 +80,7 @@ static void parse_state_snapshot_line(GuiState *state, const char *line)
 		return;
 	}
 
-	if (sscanf(line, "PLAYER %31s %c %d %d %d %d",
+	if (sscanf(line, "PLAYER %31s %c %f %f %d %d",
 			   name1, &choice, &x, &y, &alive, &waiting) == 6)
 	{
 		int idx = get_or_add_player(state->players, name1);
@@ -128,9 +129,9 @@ static void parse_state_snapshot_line(GuiState *state, const char *line)
 	if (strncmp(line, "PAIR ", 5) == 0)
 	{
 		char c1, c2;
-		int move_x, move_y;
+		float move_x, move_y;
 
-		if (sscanf(line, "PAIR %31s %31s %c %c WINNER %31s MOVE %d %d",
+		if (sscanf(line, "PAIR %31s %31s %c %c WINNER %31s MOVE %f %f",
 				   name1, name2, &c1, &c2, winner, &move_x, &move_y) == 7)
 		{
 			int idx_w = find_player(state->players, winner);
@@ -148,8 +149,8 @@ static void parse_state_snapshot_line(GuiState *state, const char *line)
 			{
 				state->players[idx_l].alive = 0;
 				state->players[idx_l].waiting = 0;
-				state->players[idx_l].x = -1;
-				state->players[idx_l].y = -1;
+				state->players[idx_l].x = -1.0f;
+				state->players[idx_l].y = -1.0f;
 			}
 
 			snprintf(state->status_text, sizeof(state->status_text), "%s beat %s", winner, loser);
@@ -182,7 +183,7 @@ static void parse_general_line(GuiState *state, const char *line)
 {
 	char name1[MAX_NAME];
 	char choice;
-	int x, y;
+	float x, y;
 	long sec_long;
 	int id;
 
@@ -246,9 +247,9 @@ static void parse_general_line(GuiState *state, const char *line)
 		return;
 	}
 
-	if (sscanf(line, "SETUP_OPEN %d", &x) == 1)
+	if (sscanf(line, "SETUP_OPEN %d", (int *)&x) == 1)
 	{
-		state->setup_end_time = GetTime() + x;
+		state->setup_end_time = GetTime() + (int)x;
 		snprintf(state->status_text, sizeof(state->status_text), "Setup locked. Waiting for admitted players.");
 		return;
 	}
@@ -267,10 +268,10 @@ static void parse_general_line(GuiState *state, const char *line)
 		return;
 	}
 
-	if (sscanf(line, "SPAWN_OK %d %d", &x, &y) == 2)
+	if (sscanf(line, "SPAWN_OK %f %f", &x, &y) == 2)
 	{
 		state->spawn_confirmed = 1;
-		snprintf(state->status_text, sizeof(state->status_text), "Spawn confirmed at (%d,%d)", x, y);
+		snprintf(state->status_text, sizeof(state->status_text), "Spawn confirmed at (%.1f,%.1f)", x, y);
 		return;
 	}
 

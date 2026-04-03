@@ -38,4 +38,7 @@ void finish_repicks(ServerState *s);
 /* Resolve current round pairings, eliminations, movement, and end conditions. */
 void resolve_round(ServerState *s);
 
+/* Broadcast current player positions to all connected clients. */
+void broadcast_positions(ServerState *s);
+
 #endif

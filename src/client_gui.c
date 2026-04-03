@@ -27,6 +27,17 @@
 #define GRID_ORIGIN_Y 40
 #define CELL_SIZE 60
 
+typedef struct
+{
+    int enabled;
+    char choice;
+    int spawn_x;
+    int spawn_y;
+    int hello_sent;
+    int choice_sent;
+    int spawn_sent;
+} AutoJoinConfig;
+
 static void fatal(const char *msg)
 {
     perror(msg);
@@ -49,6 +60,45 @@ static int is_valid_name_char(int c)
 {
     /* Keep names protocol-safe and easy to parse server-side. */
     return isalnum(c) || c == '_';
+}
+
+static int parse_choice_arg(const char *value, char *out_choice)
+{
+    if (value == NULL || value[0] == '\0' || value[1] != '\0')
+    {
+        return 0;
+    }
+
+    char c = (char)toupper((unsigned char)value[0]);
+    if (c != 'R' && c != 'P' && c != 'S')
+    {
+        return 0;
+    }
+
+    *out_choice = c;
+    return 1;
+}
+
+static int parse_spawn_arg(const char *value, int max_exclusive, int *out)
+{
+    if (value == NULL || out == NULL)
+    {
+        return 0;
+    }
+
+    char *end = NULL;
+    long parsed = strtol(value, &end, 10);
+    if (end == value || *end != '\0')
+    {
+        return 0;
+    }
+    if (parsed < 0 || parsed >= max_exclusive)
+    {
+        return 0;
+    }
+
+    *out = (int)parsed;
+    return 1;
 }
 
 static void draw_grid(void)
@@ -82,11 +132,12 @@ static void draw_players(GuiPlayer players[])
             continue;
         if (!(players[i].alive || players[i].waiting))
             continue;
-        if (players[i].x < 0 || players[i].y < 0)
+        if (players[i].x < 0.0f || players[i].y < 0.0f)
             continue;
 
-        int cx = GRID_ORIGIN_X + players[i].x * CELL_SIZE + CELL_SIZE / 2;
-        int cy = GRID_ORIGIN_Y + players[i].y * CELL_SIZE + CELL_SIZE / 2;
+        /* Convert float world coordinates to screen coordinates. */
+        int cx = GRID_ORIGIN_X + (int)(players[i].x * CELL_SIZE) + CELL_SIZE / 2;
+        int cy = GRID_ORIGIN_Y + (int)(players[i].y * CELL_SIZE) + CELL_SIZE / 2;
 
         Color col = players[i].alive ? choice_color(players[i].choice) : GRAY;
         DrawCircle(cx, cy, 18, col);
@@ -118,10 +169,29 @@ int main(int argc, char **argv)
 {
     const char *host = "127.0.0.1";
     const char *initial_name = "player";
+    AutoJoinConfig auto_join;
+    memset(&auto_join, 0, sizeof(auto_join));
 
     if (argc >= 2)
     {
         initial_name = argv[1];
+    }
+
+    if (argc == 5)
+    {
+        auto_join.enabled = 1;
+        if (!parse_choice_arg(argv[2], &auto_join.choice) ||
+            !parse_spawn_arg(argv[3], GRID_W, &auto_join.spawn_x) ||
+            !parse_spawn_arg(argv[4], GRID_H, &auto_join.spawn_y))
+        {
+            fprintf(stderr, "Usage: %s [name [R|P|S x y]]\n", argv[0]);
+            return 1;
+        }
+    }
+    else if (!(argc == 1 || argc == 2))
+    {
+        fprintf(stderr, "Usage: %s [name [R|P|S x y]]\n", argv[0]);
+        return 1;
     }
 
     if (net_init() != 0)
@@ -139,6 +209,13 @@ int main(int argc, char **argv)
     GuiState state;
     init_gui_state(&state, initial_name);
 
+    if (auto_join.enabled)
+    {
+        snprintf(state.status_text, sizeof(state.status_text),
+                 "Auto mode: %s %c (%d,%d)", initial_name, auto_join.choice,
+                 auto_join.spawn_x, auto_join.spawn_y);
+    }
+
     InitWindow(WINDOW_W, WINDOW_H, "RPS Battle Royale");
     SetTargetFPS(60);
 
@@ -154,6 +231,33 @@ int main(int argc, char **argv)
         pump_network(&net_player, &state);
 
         Vector2 mouse = GetMousePosition();
+
+        if (auto_join.enabled)
+        {
+            if (!state.name_registered && !state.name_check_pending && !auto_join.hello_sent && state.name_input[0] != '\0')
+            {
+                snprintf(state.pending_name, sizeof(state.pending_name), "%s", state.name_input);
+                send_line(fd, "HELLO %s", state.pending_name);
+                state.name_check_pending = 1;
+                state.state_request_sent = 0;
+                auto_join.hello_sent = 1;
+            }
+
+            if (state.name_registered && !state.game_over && state.can_attempt_join && !state.joined_match && !state.repick_phase)
+            {
+                if (!auto_join.choice_sent)
+                {
+                    send_line(fd, "CHOICE %c", auto_join.choice);
+                    auto_join.choice_sent = 1;
+                }
+
+                if (state.choice_confirmed && !auto_join.spawn_sent)
+                {
+                    send_line(fd, "SPAWN %d %d", auto_join.spawn_x, auto_join.spawn_y);
+                    auto_join.spawn_sent = 1;
+                }
+            }
+        }
 
         if (state.name_box_active && !state.name_registered)
         {

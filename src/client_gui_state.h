@@ -16,10 +16,10 @@ typedef struct
 	int used;
 	char name[MAX_NAME];
 
-	/* Last known R/P/S type and board position. */
+	/* Last known R/P/S type and board position (float-based coordinates). */
 	char choice;
-	int x;
-	int y;
+	float x;
+	float y;
 
 	/* Admission/round visibility flags from STATE snapshot. */
 	int alive;

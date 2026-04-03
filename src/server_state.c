@@ -102,14 +102,14 @@ static void broadcast_game_state(ServerState *s)
 	}
 }
 
-static void broadcast_positions(ServerState *s)
+void broadcast_positions(ServerState *s)
 {
 	for (int i = 0; i < MAX_PLAYERS; i++)
 	{
 		Player *p = &s->players[i];
 		if (player_is_admitted(p))
 		{
-			queue_broadcast(s, "PLAYER %s %c %d %d %d %d",
+			queue_broadcast(s, "PLAYER %s %c %.1f %.1f %d %d",
 							p->name,
 							p->choice_chosen ? p->choice : '?',
 							p->x,
@@ -199,8 +199,8 @@ void drop_player(ServerState *s, int idx, int announce)
 
 	CLOSESOCKET(s->players[idx].fd);
 	memset(&s->players[idx], 0, sizeof(Player));
-	s->players[idx].x = -1;
-	s->players[idx].y = -1;
+	s->players[idx].x = -1.0f;
+	s->players[idx].y = -1.0f;
 
 	if (should_announce)
 	{
@@ -280,7 +280,7 @@ int queue_game_state_for_player(ServerState *s, Player *dst)
 		Player *p = &s->players[i];
 		if (player_is_admitted(p))
 		{
-			if (queue_line_checked(dst, "PLAYER %s %c %d %d %d %d",
+			if (queue_line_checked(dst, "PLAYER %s %c %.1f %.1f %d %d",
 								   p->name,
 								   p->choice_chosen ? p->choice : '?',
 								   p->x,
@@ -550,10 +550,10 @@ void resolve_round(ServerState *s)
 		Player *a = &s->players[pairs[k].a];
 		Player *b = &s->players[pairs[k].b];
 
-		int ax = a->x;
-		int ay = a->y;
-		int bx = b->x;
-		int by = b->y;
+		float ax = a->x;
+		float ay = a->y;
+		float bx = b->x;
+		float by = b->y;
 
 		int r = rps_result(a->choice, b->choice);
 
@@ -564,10 +564,10 @@ void resolve_round(ServerState *s)
 
 			b->alive = 0;
 			b->in_round = 0;
-			b->x = -1;
-			b->y = -1;
+			b->x = -1.0f;
+			b->y = -1.0f;
 
-			queue_broadcast(s, "PAIR %s %s %c %c WINNER %s MOVE %d %d",
+			queue_broadcast(s, "PAIR %s %s %c %c WINNER %s MOVE %.1f %.1f",
 							a->name, b->name, a->choice, b->choice,
 							a->name, a->x, a->y);
 			if (b->connected)
@@ -585,10 +585,10 @@ void resolve_round(ServerState *s)
 
 			a->alive = 0;
 			a->in_round = 0;
-			a->x = -1;
-			a->y = -1;
+			a->x = -1.0f;
+			a->y = -1.0f;
 
-			queue_broadcast(s, "PAIR %s %s %c %c WINNER %s MOVE %d %d",
+			queue_broadcast(s, "PAIR %s %s %c %c WINNER %s MOVE %.1f %.1f",
 							a->name, b->name, a->choice, b->choice,
 							b->name, b->x, b->y);
 			if (a->connected)

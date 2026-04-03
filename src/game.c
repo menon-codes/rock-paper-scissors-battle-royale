@@ -13,10 +13,10 @@
 
 static int dist2(const Player *a, const Player *b)
 {
-    /* Squared distance avoids floating point and preserves ordering. */
-    int dx = a->x - b->x;
-    int dy = a->y - b->y;
-    return dx * dx + dy * dy;
+    /* Squared distance for pairing; works with float coordinates. */
+    float dx = a->x - b->x;
+    float dy = a->y - b->y;
+    return (int)(dx * dx + dy * dy);
 }
 
 void init_server_state(ServerState *s)

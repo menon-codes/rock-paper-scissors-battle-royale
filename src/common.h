@@ -65,7 +65,7 @@
 #define GRID_W 10
 #define GRID_H 10
 
-#define JOIN_WINDOW_SECONDS 60
+#define JOIN_WINDOW_SECONDS 4 // 21 // 60
 #define SETUP_SECONDS 20
 #define ROUND_SECONDS 5
 
@@ -161,8 +161,8 @@ typedef struct
     char name[MAX_NAME];
     char choice;
 
-    int x;
-    int y;
+    float x;
+    float y;
 
     /* Per-player line-oriented network buffers. */
     char inbuf[INBUF_SIZE];

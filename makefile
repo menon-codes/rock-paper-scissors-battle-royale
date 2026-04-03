@@ -48,6 +48,7 @@ CLIENT_GUI_NETWORK_OBJ=$(OBJ_DIR)/client_gui_network.o
 CLIENT_GUI_MESSAGES_OBJ=$(OBJ_DIR)/client_gui_messages.o
 PROTOCOL_OBJ=$(OBJ_DIR)/protocol.o
 GAME_OBJ=$(OBJ_DIR)/game.o
+CHASE_SIMULATION_OBJ=$(OBJ_DIR)/chase_simulation.o
 TEST_RUNNER_OBJ=$(OBJ_DIR)/test_runner.o
 INTEGRATION_RUNNER_OBJ=$(OBJ_DIR)/integration_runner.o
 
@@ -67,7 +68,7 @@ integration-test: $(SERVER_BIN) $(INTEGRATION_TEST_BIN)
 
 test-all: test integration-test
 
-$(SERVER_BIN): $(SERVER_OBJ) $(SERVER_STATE_OBJ) $(SERVER_COMMANDS_OBJ) $(PROTOCOL_OBJ) $(GAME_OBJ) | dirs
+$(SERVER_BIN): $(SERVER_OBJ) $(SERVER_STATE_OBJ) $(SERVER_COMMANDS_OBJ) $(PROTOCOL_OBJ) $(GAME_OBJ) $(CHASE_SIMULATION_OBJ) | dirs
 	$(CC) $(CFLAGS) -DPORT=$(PORT) -o $@ $^ $(SOCKET_LIBS)
 
 $(CLIENT_TEXT_BIN): $(CLIENT_TEXT_OBJ) $(PROTOCOL_OBJ) | dirs
@@ -76,13 +77,13 @@ $(CLIENT_TEXT_BIN): $(CLIENT_TEXT_OBJ) $(PROTOCOL_OBJ) | dirs
 $(CLIENT_GUI_BIN): $(CLIENT_GUI_OBJ) $(CLIENT_GUI_NETWORK_OBJ) $(CLIENT_GUI_MESSAGES_OBJ) $(PROTOCOL_OBJ) | dirs
 	$(CC) $(CFLAGS) $(RAYLIB_CFLAGS) -DPORT=$(PORT) -o $@ $^ $(RAYLIB_LIBS) $(SOCKET_LIBS)
 
-$(TEST_BIN): $(TEST_RUNNER_OBJ) $(SERVER_STATE_OBJ) $(SERVER_COMMANDS_OBJ) $(PROTOCOL_OBJ) $(GAME_OBJ) | dirs
+$(TEST_BIN): $(TEST_RUNNER_OBJ) $(SERVER_STATE_OBJ) $(SERVER_COMMANDS_OBJ) $(PROTOCOL_OBJ) $(GAME_OBJ) $(CHASE_SIMULATION_OBJ) | dirs
 	$(CC) $(CFLAGS) -DPORT=$(PORT) -o $@ $^ $(SOCKET_LIBS)
 
 $(INTEGRATION_TEST_BIN): $(INTEGRATION_RUNNER_OBJ) $(PROTOCOL_OBJ) | dirs
 	$(CC) $(CFLAGS) -DPORT=$(PORT) -o $@ $^ $(SOCKET_LIBS)
 
-$(SERVER_OBJ): $(SRC_DIR)/server.c $(SRC_DIR)/common.h $(SRC_DIR)/protocol.h $(SRC_DIR)/game.h | dirs
+$(SERVER_OBJ): $(SRC_DIR)/server.c $(SRC_DIR)/common.h $(SRC_DIR)/protocol.h $(SRC_DIR)/game.h $(SRC_DIR)/chase_simulation.h | dirs
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c -o $@ $<
 
 $(SERVER_STATE_OBJ): $(SRC_DIR)/server_state.c $(SRC_DIR)/common.h $(SRC_DIR)/server_state.h $(SRC_DIR)/protocol.h $(SRC_DIR)/game.h | dirs
@@ -107,6 +108,9 @@ $(PROTOCOL_OBJ): $(SRC_DIR)/protocol.c $(SRC_DIR)/common.h $(SRC_DIR)/protocol.h
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c -o $@ $<
 
 $(GAME_OBJ): $(SRC_DIR)/game.c $(SRC_DIR)/common.h $(SRC_DIR)/game.h | dirs
+	$(CC) $(CFLAGS) $(CPPFLAGS) -c -o $@ $<
+
+$(CHASE_SIMULATION_OBJ): $(SRC_DIR)/chase_simulation.c $(SRC_DIR)/common.h $(SRC_DIR)/chase_simulation.h | dirs
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c -o $@ $<
 
 $(TEST_RUNNER_OBJ): $(TEST_DIR)/test_runner.c $(SRC_DIR)/common.h $(SRC_DIR)/game.h $(SRC_DIR)/protocol.h $(SRC_DIR)/server_state.h $(SRC_DIR)/server_commands.h | dirs

@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "chase_simulation.h"
 #include "server_commands.h"
 #include "server_state.h"
 
@@ -21,10 +22,21 @@
 #define PORT 4242
 #endif
 
+#define CHASE_TICK_SECONDS 0.016667
+#define CHASE_TICK_USEC 16667
+
 static void fatal(const char *msg)
 {
     perror(msg);
     exit(1);
+}
+
+static double now_seconds(void)
+{
+    /* Use sub-second precision so chase ticks can run faster than 1 Hz. */
+    struct timespec ts;
+    (void)timespec_get(&ts, TIME_UTC);
+    return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
 }
 
 static socket_t create_listen_socket(void)
@@ -184,15 +196,28 @@ static void process_player_writes(ServerState *state, fd_set *writefds)
     }
 }
 
-static void process_timers(ServerState *state)
+static void process_timers(ServerState *state, double *last_chase_tick)
 {
     close_lobby_if_needed(state);
     expire_unready_setup_players(state);
 
-    if (state->phase == PHASE_ROUND_ACTIVE &&
-        time(NULL) >= state->round_deadline)
+    /* Chase tick loop: 20 Hz = every 50ms (0.05 seconds). */
+    double now = now_seconds();
+    double elapsed = now - *last_chase_tick;
+
+    if (state->phase == PHASE_ROUND_ACTIVE && elapsed >= CHASE_TICK_SECONDS)
     {
-        resolve_round(state);
+        *last_chase_tick = now;
+        int match_ended = simulate_chase_tick(state, (float)CHASE_TICK_SECONDS);
+
+        /* Send updated positions after each chase tick. */
+        broadcast_positions(state);
+
+        if (match_ended)
+        {
+            /* One type remains: game over. Let reevaluate_state handle the transition. */
+            reevaluate_state(state);
+        }
     }
 }
 
@@ -214,6 +239,7 @@ int main(void)
 
     ServerState state;
     init_server_state(&state);
+    double last_chase_tick = now_seconds();
 
     printf("Server listening on port %d\n", PORT);
 
@@ -223,8 +249,8 @@ int main(void)
         int maxfd = build_select_sets(listen_fd, &state, &readfds, &writefds);
 
         struct timeval tv;
-        tv.tv_sec = 1;
-        tv.tv_usec = 0;
+        tv.tv_sec = 0;
+        tv.tv_usec = CHASE_TICK_USEC; /* 50ms for ~20 Hz chase tick cadence. */
 
         int ready = select(maxfd + 1, &readfds, &writefds, NULL, &tv);
         if (ready < 0)
@@ -240,7 +266,7 @@ int main(void)
         }
         process_player_reads(&state, &readfds);
         process_player_writes(&state, &writefds);
-        process_timers(&state);
+        process_timers(&state, &last_chase_tick);
 
         if (auto_exit_for_tests && saw_client && connected_player_count(&state) == 0)
         {

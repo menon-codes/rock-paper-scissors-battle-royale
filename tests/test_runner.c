@@ -3,6 +3,7 @@
 #include "protocol.h"
 #include "server_commands.h"
 #include "server_state.h"
+#include "chase_simulation.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -10,6 +11,8 @@
 
 static int g_tests_run = 0;
 static int g_tests_failed = 0;
+
+#define TEST_CHASE_DT 0.05f
 
 #define CHECK(cond)                                                         \
 	do                                                                      \
@@ -51,8 +54,8 @@ static void init_connected_player(Player *p, int id)
 	p->connected = 1;
 	p->fd = INVALID_SOCKET;
 	p->id = id;
-	p->x = -1;
-	p->y = -1;
+	p->x = -1.0f;
+	p->y = -1.0f;
 }
 
 static void clear_player_output(Player *p)
@@ -60,7 +63,7 @@ static void clear_player_output(Player *p)
 	p->outbuf_used = 0;
 }
 
-static void setup_registered_admitted_player(Player *p, int id, const char *name, int x, int y, char choice)
+static void setup_registered_admitted_player(Player *p, int id, const char *name, float x, float y, char choice)
 {
 	init_connected_player(p, id);
 	snprintf(p->name, sizeof(p->name), "%s", name);
@@ -256,7 +259,7 @@ static void test_handle_command_registration_and_join(void)
 	CHECK(s.players[0].choice_chosen == 1);
 	CHECK(s.players[0].spawn_chosen == 1);
 	CHECK(s.players[0].admitted == 1);
-	CHECK(player_out_contains(&s.players[0], "SPAWN_OK 1 1\n"));
+	CHECK(player_out_contains(&s.players[0], "SPAWN_OK 1.0 1.0\n"));
 	CHECK(player_out_contains(&s.players[0], "JOINED_MATCH\n"));
 }
 
@@ -515,6 +518,163 @@ static void test_reset_match_via_rematch_command(void)
 	CHECK(player_out_contains(&s.players[1], "MATCH_RESET\n"));
 }
 
+static void test_can_eat(void)
+{
+	/* Rock eats Scissors, Scissors eats Paper, Paper eats Rock. */
+	CHECK(can_eat('R', 'S') == 1);
+	CHECK(can_eat('S', 'P') == 1);
+	CHECK(can_eat('P', 'R') == 1);
+
+	/* No eating if same type or non-predator. */
+	CHECK(can_eat('R', 'R') == 0);
+	CHECK(can_eat('R', 'P') == 0);
+	CHECK(can_eat('S', 'R') == 0);
+	CHECK(can_eat('S', 'S') == 0);
+	CHECK(can_eat('P', 'P') == 0);
+	CHECK(can_eat('P', 'S') == 0);
+}
+
+static void test_find_nearest_prey(void)
+{
+	ServerState s;
+	init_server_state(&s);
+
+	/* Setup: Rock at (0,0), Paper at (1,0), Scissors at (2,0) */
+	setup_registered_admitted_player(&s.players[0], 1, "rock", 0.0f, 0.0f, 'R');
+	setup_registered_admitted_player(&s.players[1], 2, "paper", 1.0f, 0.0f, 'P');
+	setup_registered_admitted_player(&s.players[2], 3, "scissors", 2.0f, 0.0f, 'S');
+
+	/* Rock should target Scissors (only 2 squares away). */
+	int prey_idx = find_nearest_prey(&s, 0);
+	CHECK(prey_idx == 2);
+
+	/* Paper should target Rock (only 1 square away). */
+	prey_idx = find_nearest_prey(&s, 1);
+	CHECK(prey_idx == 0);
+
+	/* Scissors should target Paper (only 1 square away). */
+	prey_idx = find_nearest_prey(&s, 2);
+	CHECK(prey_idx == 1);
+}
+
+static void test_simulate_chase_tick_basic(void)
+{
+	ServerState s;
+	init_server_state(&s);
+
+	/* Setup: Rock at (0,0), Scissors at (3,0) - distance is 3, so rock moves 2 but doesn't capture. */
+	setup_registered_admitted_player(&s.players[0], 1, "rock", 0.0f, 0.0f, 'R');
+	setup_registered_admitted_player(&s.players[1], 2, "scissors", 3.0f, 0.0f, 'S');
+
+	/* Rock should move toward Scissors. */
+	int match_ended = simulate_chase_tick(&s, TEST_CHASE_DT);
+	CHECK(match_ended == 0);
+
+	/* Rock should have moved closer (by CHASE_SPEED). */
+	CHECK(s.players[0].x > 0.0f);
+	CHECK(s.players[0].x < 3.0f);
+
+	/* Scissors should remain at original position (no prey of type it eats). */
+	CHECK(s.players[1].x == 3.0f);
+	CHECK(s.players[1].y == 0.0f);
+}
+
+static void test_simulate_chase_tick_capture(void)
+{
+	ServerState s;
+	init_server_state(&s);
+
+	/* Setup: Rock and Scissors very close, with Paper far away. */
+	setup_registered_admitted_player(&s.players[0], 1, "rock", 0.0f, 0.0f, 'R');
+	setup_registered_admitted_player(&s.players[1], 2, "scissors", 0.3f, 0.0f, 'S');
+	setup_registered_admitted_player(&s.players[2], 3, "paper", 5.0f, 0.0f, 'P');
+
+	/* One tick should result in capture of scissors. */
+	int match_ended = simulate_chase_tick(&s, TEST_CHASE_DT);
+	CHECK(match_ended == 0);
+
+	/* Scissors should be eliminated. */
+	CHECK(s.players[1].alive == 0);
+	CHECK(s.players[1].x == -1.0f);
+	CHECK(s.players[1].y == -1.0f);
+
+	/* Rock and Paper should still be alive. */
+	CHECK(s.players[0].alive == 1);
+	CHECK(s.players[2].alive == 1);
+}
+
+static void test_simulate_chase_tick_same_type_no_collision(void)
+{
+	ServerState s;
+	init_server_state(&s);
+
+	/* Setup: Two rocks at different positions. */
+	setup_registered_admitted_player(&s.players[0], 1, "rock1", 0.0f, 0.0f, 'R');
+	setup_registered_admitted_player(&s.players[1], 2, "rock2", 1.0f, 0.0f, 'R');
+
+	float rock1_x = s.players[0].x;
+	float rock2_x = s.players[1].x;
+
+	/* Simulate tick: rocks should not interact. */
+	simulate_chase_tick(&s, TEST_CHASE_DT);
+
+	/* Both should remain unchanged. */
+	CHECK(s.players[0].x == rock1_x);
+	CHECK(s.players[0].y == 0.0f);
+	CHECK(s.players[1].x == rock2_x);
+	CHECK(s.players[1].y == 0.0f);
+	CHECK(s.players[0].alive == 1);
+	CHECK(s.players[1].alive == 1);
+}
+
+static void test_simulate_chase_tick_winner_detection(void)
+{
+	ServerState s;
+	init_server_state(&s);
+
+	/* Setup: Only one Rock alive, Paper already eliminated. */
+	setup_registered_admitted_player(&s.players[0], 1, "rock", 0.0f, 0.0f, 'R');
+	s.players[0].alive = 1;
+
+	/* No other alive players. */
+	for (int i = 1; i < MAX_PLAYERS; i++)
+	{
+		s.players[i].alive = 0;
+	}
+
+	/* Simulate tick should detect only one type remains. */
+	int match_ended = simulate_chase_tick(&s, TEST_CHASE_DT);
+	CHECK(match_ended == 1);
+}
+
+static void test_simulate_chase_tick_multi_player(void)
+{
+	ServerState s;
+	init_server_state(&s);
+
+	/* Setup: Multiple players of different types. */
+	setup_registered_admitted_player(&s.players[0], 1, "r1", 0.0f, 0.0f, 'R');
+	setup_registered_admitted_player(&s.players[1], 2, "s1", 1.0f, 0.0f, 'S');
+	setup_registered_admitted_player(&s.players[2], 3, "p1", 2.0f, 0.0f, 'P');
+
+	/* All should move toward their prey. */
+	simulate_chase_tick(&s, TEST_CHASE_DT);
+
+	/* Rock should move right (toward Scissors). */
+	CHECK(s.players[0].x > 0.0f);
+
+	/* Scissors should move right (toward Paper). */
+	CHECK(s.players[1].x > 1.0f);
+
+	/* Paper should move left (toward Rock). */
+	CHECK(s.players[2].x < 2.0f);
+
+	/* All should remain alive (no captures yet). */
+	CHECK(s.players[0].alive == 1);
+	CHECK(s.players[1].alive == 1);
+	CHECK(s.players[2].alive == 1);
+}
+
 int main(void)
 {
 	if (net_init() != 0)
@@ -542,6 +702,13 @@ int main(void)
 	test_finish_repicks_moves_to_round();
 	test_reevaluate_state_paths();
 	test_reset_match_via_rematch_command();
+	test_can_eat();
+	test_find_nearest_prey();
+	test_simulate_chase_tick_basic();
+	test_simulate_chase_tick_capture();
+	test_simulate_chase_tick_same_type_no_collision();
+	test_simulate_chase_tick_winner_detection();
+	test_simulate_chase_tick_multi_player();
 
 	net_cleanup();
 

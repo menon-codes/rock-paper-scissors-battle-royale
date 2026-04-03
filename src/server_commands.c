@@ -135,8 +135,8 @@ static void reset_player_progress(Player *p)
 	p->repick_choice = 0;
 
 	p->choice = 0;
-	p->x = -1;
-	p->y = -1;
+	p->x = -1.0f;
+	p->y = -1.0f;
 }
 
 static void init_player_slot(Player *p, socket_t fd, int id)
@@ -145,8 +145,8 @@ static void init_player_slot(Player *p, socket_t fd, int id)
 	p->fd = fd;
 	p->id = id;
 	p->connected = 1;
-	p->x = -1;
-	p->y = -1;
+	p->x = -1.0f;
+	p->y = -1.0f;
 }
 
 int add_player(ServerState *s, socket_t fd)
@@ -220,26 +220,26 @@ static void handle_choice_command(ServerState *s, int idx, const char *line)
 static void handle_spawn_command(ServerState *s, int idx, const char *line)
 {
 	Player *p = &s->players[idx];
-	int x, y;
+	float x, y;
 
 	if (!require_registered_not_admitted(p))
 	{
 		return;
 	}
 
-	if (sscanf(line + 6, "%d %d", &x, &y) != 2)
+	if (sscanf(line + 6, "%f %f", &x, &y) != 2)
 	{
 		(void)queue_line(p, "ERROR usage_SPAWN_x_y");
 		return;
 	}
 
-	if (x < 0 || x >= GRID_W || y < 0 || y >= GRID_H)
+	if (x < 0.0f || x >= (float)GRID_W || y < 0.0f || y >= (float)GRID_H)
 	{
 		(void)queue_line(p, "ERROR bad_spawn");
 		return;
 	}
 
-	if (spawn_taken(s, x, y, idx))
+	if (spawn_taken(s, (int)x, (int)y, idx))
 	{
 		(void)queue_line(p, "ERROR spawn_taken");
 		return;
@@ -248,7 +248,7 @@ static void handle_spawn_command(ServerState *s, int idx, const char *line)
 	p->x = x;
 	p->y = y;
 	p->spawn_chosen = 1;
-	(void)queue_line(p, "SPAWN_OK %d %d", x, y);
+	(void)queue_line(p, "SPAWN_OK %.1f %.1f", x, y);
 
 	maybe_admit_player(s, idx);
 }
