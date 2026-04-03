@@ -109,7 +109,7 @@ void broadcast_positions(ServerState *s)
 		Player *p = &s->players[i];
 		if (player_is_admitted(p))
 		{
-			queue_broadcast(s, "PLAYER %s %c %.1f %.1f %d %d",
+			queue_broadcast(s, "PLAYER %s %c %.3f %.3f %d %d",
 							p->name,
 							p->choice_chosen ? p->choice : '?',
 							p->x,
@@ -280,7 +280,7 @@ int queue_game_state_for_player(ServerState *s, Player *dst)
 		Player *p = &s->players[i];
 		if (player_is_admitted(p))
 		{
-			if (queue_line_checked(dst, "PLAYER %s %c %.1f %.1f %d %d",
+			if (queue_line_checked(dst, "PLAYER %s %c %.3f %.3f %d %d",
 								   p->name,
 								   p->choice_chosen ? p->choice : '?',
 								   p->x,
@@ -567,7 +567,7 @@ void resolve_round(ServerState *s)
 			b->x = -1.0f;
 			b->y = -1.0f;
 
-			queue_broadcast(s, "PAIR %s %s %c %c WINNER %s MOVE %.1f %.1f",
+			queue_broadcast(s, "PAIR %s %s %c %c WINNER %s MOVE %.3f %.3f",
 							a->name, b->name, a->choice, b->choice,
 							a->name, a->x, a->y);
 			if (b->connected)
@@ -588,7 +588,7 @@ void resolve_round(ServerState *s)
 			a->x = -1.0f;
 			a->y = -1.0f;
 
-			queue_broadcast(s, "PAIR %s %s %c %c WINNER %s MOVE %.1f %.1f",
+			queue_broadcast(s, "PAIR %s %s %c %c WINNER %s MOVE %.3f %.3f",
 							a->name, b->name, a->choice, b->choice,
 							b->name, b->x, b->y);
 			if (a->connected)

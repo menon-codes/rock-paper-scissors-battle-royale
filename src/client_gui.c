@@ -136,16 +136,16 @@ static void draw_players(GuiPlayer players[])
             continue;
 
         /* Convert float world coordinates to screen coordinates. */
-        int cx = GRID_ORIGIN_X + (int)(players[i].x * CELL_SIZE) + CELL_SIZE / 2;
-        int cy = GRID_ORIGIN_Y + (int)(players[i].y * CELL_SIZE) + CELL_SIZE / 2;
+        float cx = (float)GRID_ORIGIN_X + players[i].x * (float)CELL_SIZE + (float)CELL_SIZE / 2.0f;
+        float cy = (float)GRID_ORIGIN_Y + players[i].y * (float)CELL_SIZE + (float)CELL_SIZE / 2.0f;
 
         Color col = players[i].alive ? choice_color(players[i].choice) : GRAY;
-        DrawCircle(cx, cy, 18, col);
-        DrawCircleLines(cx, cy, 18, BLACK);
+        DrawCircleV((Vector2){cx, cy}, 18.0f, col);
+        DrawCircleLines((int)cx, (int)cy, 18.0f, BLACK);
 
         char label[64];
         snprintf(label, sizeof(label), "%s(%c)", players[i].name, players[i].choice);
-        DrawText(label, cx - 28, cy - 34, 14, BLACK);
+        DrawText(label, (int)cx - 28, (int)cy - 34, 14, BLACK);
     }
 }
 

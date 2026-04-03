@@ -1,16 +1,22 @@
-param(
-	[switch]$Build
-)
-
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
 Set-Location $repoRoot
 
-if ($Build) {
-	Write-Host 'Building binaries...'
-	make all
+Write-Host 'Stopping existing server/client processes...'
+$processNames = @('server', 'client_gui', 'client_text')
+$running = Get-Process -Name $processNames -ErrorAction SilentlyContinue
+if ($null -ne $running) {
+	$running | Stop-Process -Force
+	Start-Sleep -Milliseconds 300
+	Write-Host 'Stopped existing server/client processes.'
 }
+else {
+	Write-Host 'No existing server/client processes were running.'
+}
+
+Write-Host 'Building binaries...'
+make all
 
 $serverPath = Join-Path $repoRoot 'build/bin/server.exe'
 $clientPath = Join-Path $repoRoot 'build/bin/client_gui.exe'
