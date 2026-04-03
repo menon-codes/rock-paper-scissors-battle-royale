@@ -44,18 +44,6 @@ static void fatal(const char *msg)
     exit(1);
 }
 
-static Color choice_color(char c)
-{
-    /* Canonical color mapping for R/P/S markers in the grid and legend. */
-    if (c == 'R')
-        return RED;
-    if (c == 'P')
-        return BLUE;
-    if (c == 'S')
-        return GREEN;
-    return GRAY;
-}
-
 static int is_valid_name_char(int c)
 {
     /* Keep names protocol-safe and easy to parse server-side. */
@@ -101,6 +89,38 @@ static int parse_spawn_arg(const char *value, int max_exclusive, int *out)
     return 1;
 }
 
+static int resolve_asset_path(const char *file_name, char *resolved_path, size_t resolved_path_size)
+{
+    const char *asset_dirs[] = {
+        "assets",
+        "../assets",
+        "../../assets"};
+
+    for (int i = 0; i < (int)(sizeof(asset_dirs) / sizeof(asset_dirs[0])); ++i)
+    {
+        snprintf(resolved_path, resolved_path_size, "%s/%s", asset_dirs[i], file_name);
+        if (FileExists(resolved_path))
+        {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+static Texture2D pick_player_texture(char choice, Texture2D rock, Texture2D paper, Texture2D scissor)
+{
+    if (choice == 'P')
+    {
+        return paper;
+    }
+    if (choice == 'S')
+    {
+        return scissor;
+    }
+    return rock;
+}
+
 static void draw_grid(void)
 {
     for (int y = 0; y <= GRID_H; y++)
@@ -124,8 +144,10 @@ static void draw_grid(void)
     }
 }
 
-static void draw_players(GuiPlayer players[])
+static void draw_players(GuiPlayer players[], Texture2D rock, Texture2D paper, Texture2D scissor)
 {
+    const float player_sprite_size = 44.0f;
+
     for (int i = 0; i < MAX_PLAYERS; i++)
     {
         if (!players[i].used)
@@ -139,9 +161,14 @@ static void draw_players(GuiPlayer players[])
         float cx = (float)GRID_ORIGIN_X + players[i].x * (float)CELL_SIZE + (float)CELL_SIZE / 2.0f;
         float cy = (float)GRID_ORIGIN_Y + players[i].y * (float)CELL_SIZE + (float)CELL_SIZE / 2.0f;
 
-        Color col = players[i].alive ? choice_color(players[i].choice) : GRAY;
-        DrawCircleV((Vector2){cx, cy}, 18.0f, col);
-        DrawCircleLines((int)cx, (int)cy, 18.0f, BLACK);
+        Texture2D texture = pick_player_texture(players[i].choice, rock, paper, scissor);
+        Rectangle src = {0.0f, 0.0f, (float)texture.width, (float)texture.height};
+        Rectangle dst = {
+            cx - player_sprite_size / 2.0f,
+            cy - player_sprite_size / 2.0f,
+            player_sprite_size,
+            player_sprite_size};
+        DrawTexturePro(texture, src, dst, (Vector2){0.0f, 0.0f}, 0.0f, players[i].alive ? WHITE : LIGHTGRAY);
 
         char label[64];
         snprintf(label, sizeof(label), "%s(%c)", players[i].name, players[i].choice);
@@ -149,19 +176,36 @@ static void draw_players(GuiPlayer players[])
     }
 }
 
-static void draw_legend_box(int x, int y)
+static void draw_legend_box(int x, int y, Texture2D rock, Texture2D paper, Texture2D scissor)
 {
+    const float legend_sprite_size = 20.0f;
+
     DrawRectangleRounded((Rectangle){(float)x, (float)y, 220.0f, 125.0f}, 0.15f, 8, LIGHTGRAY);
     DrawRectangleLines(x, y, 220, 125, GRAY);
     DrawText("Legend", x + 12, y + 10, 22, BLACK);
 
-    DrawCircle(x + 25, y + 45, 10, RED);
+    DrawTexturePro(rock,
+                   (Rectangle){0.0f, 0.0f, (float)rock.width, (float)rock.height},
+                   (Rectangle){(float)x + 15.0f, (float)y + 35.0f, legend_sprite_size, legend_sprite_size},
+                   (Vector2){0.0f, 0.0f},
+                   0.0f,
+                   WHITE);
     DrawText("Rock", x + 45, y + 36, 20, BLACK);
 
-    DrawCircle(x + 25, y + 75, 10, BLUE);
+    DrawTexturePro(paper,
+                   (Rectangle){0.0f, 0.0f, (float)paper.width, (float)paper.height},
+                   (Rectangle){(float)x + 15.0f, (float)y + 65.0f, legend_sprite_size, legend_sprite_size},
+                   (Vector2){0.0f, 0.0f},
+                   0.0f,
+                   WHITE);
     DrawText("Paper", x + 45, y + 66, 20, BLACK);
 
-    DrawCircle(x + 25, y + 105, 10, GREEN);
+    DrawTexturePro(scissor,
+                   (Rectangle){0.0f, 0.0f, (float)scissor.width, (float)scissor.height},
+                   (Rectangle){(float)x + 15.0f, (float)y + 95.0f, legend_sprite_size, legend_sprite_size},
+                   (Vector2){0.0f, 0.0f},
+                   0.0f,
+                   WHITE);
     DrawText("Scissors", x + 45, y + 96, 20, BLACK);
 }
 
@@ -216,8 +260,47 @@ int main(int argc, char **argv)
                  auto_join.spawn_x, auto_join.spawn_y);
     }
 
+    SetConfigFlags(FLAG_MSAA_4X_HINT);
     InitWindow(WINDOW_W, WINDOW_H, "RPS Battle Royale");
     SetTargetFPS(60);
+
+    char rock_path[512];
+    char paper_path[512];
+    char scissor_path[512];
+    int has_rock = resolve_asset_path("rock.png", rock_path, sizeof(rock_path));
+    int has_paper = resolve_asset_path("paper.png", paper_path, sizeof(paper_path));
+    int has_scissor = resolve_asset_path("scissor.png", scissor_path, sizeof(scissor_path));
+
+    if (!has_rock || !has_paper || !has_scissor)
+    {
+        fprintf(stderr, "Missing one or more required textures in assets/ (rock.png, paper.png, scissor.png)\n");
+        CLOSESOCKET(fd);
+        net_cleanup();
+        CloseWindow();
+        return 1;
+    }
+
+    Texture2D rock_texture = LoadTexture(rock_path);
+    Texture2D paper_texture = LoadTexture(paper_path);
+    Texture2D scissor_texture = LoadTexture(scissor_path);
+    if (rock_texture.id == 0 || paper_texture.id == 0 || scissor_texture.id == 0)
+    {
+        fprintf(stderr, "Failed to load one or more textures from assets/\n");
+        if (rock_texture.id != 0)
+            UnloadTexture(rock_texture);
+        if (paper_texture.id != 0)
+            UnloadTexture(paper_texture);
+        if (scissor_texture.id != 0)
+            UnloadTexture(scissor_texture);
+        CLOSESOCKET(fd);
+        net_cleanup();
+        CloseWindow();
+        return 1;
+    }
+
+    SetTextureFilter(rock_texture, TEXTURE_FILTER_BILINEAR);
+    SetTextureFilter(paper_texture, TEXTURE_FILTER_BILINEAR);
+    SetTextureFilter(scissor_texture, TEXTURE_FILTER_BILINEAR);
 
     Rectangle rockBtn = {720, 430, 120, 42};
     Rectangle paperBtn = {850, 430, 120, 42};
@@ -378,7 +461,7 @@ int main(int argc, char **argv)
 
         /* World view (left) + control panel (right) are drawn every frame. */
         draw_grid();
-        draw_players(state.players);
+        draw_players(state.players, rock_texture, paper_texture, scissor_texture);
 
         int panel_x = GRID_ORIGIN_X + GRID_W * CELL_SIZE + 40;
         int panel_y = GRID_ORIGIN_Y;
@@ -471,7 +554,7 @@ int main(int argc, char **argv)
             panel_y += 28;
         }
 
-        draw_legend_box(panel_x, panel_y);
+        draw_legend_box(panel_x, panel_y, rock_texture, paper_texture, scissor_texture);
         panel_y += 145;
 
         DrawRectangleRec(rockBtn, state.selected_choice == 'R' ? PINK : LIGHTGRAY);
@@ -509,6 +592,9 @@ int main(int argc, char **argv)
     }
 
     send_line(fd, "QUIT");
+    UnloadTexture(rock_texture);
+    UnloadTexture(paper_texture);
+    UnloadTexture(scissor_texture);
     CLOSESOCKET(fd);
     net_cleanup();
     CloseWindow();
