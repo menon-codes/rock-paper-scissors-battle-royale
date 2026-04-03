@@ -50,6 +50,7 @@ CLIENT_TEXT_OBJ=$(OBJ_DIR)/client_text.o
 CLIENT_GUI_OBJ=$(OBJ_DIR)/client_gui.o
 CLIENT_GUI_NETWORK_OBJ=$(OBJ_DIR)/client_gui_network.o
 CLIENT_GUI_MESSAGES_OBJ=$(OBJ_DIR)/client_gui_messages.o
+CLIENT_TEXT_MESSAGES_OBJ=$(OBJ_DIR)/client_text_messages.o
 PROTOCOL_OBJ=$(OBJ_DIR)/protocol.o
 GAME_OBJ=$(OBJ_DIR)/game.o
 CHASE_SIMULATION_OBJ=$(OBJ_DIR)/chase_simulation.o
@@ -75,7 +76,7 @@ test-all: test integration-test
 $(SERVER_BIN): $(SERVER_OBJ) $(SERVER_STATE_OBJ) $(SERVER_COMMANDS_OBJ) $(PROTOCOL_OBJ) $(GAME_OBJ) $(CHASE_SIMULATION_OBJ) | dirs
 	$(CC) $(CFLAGS) -DPORT=$(PORT) -o $@ $^ $(SOCKET_LIBS)
 
-$(CLIENT_TEXT_BIN): $(CLIENT_TEXT_OBJ) $(CLIENT_GUI_NETWORK_OBJ) $(CLIENT_GUI_MESSAGES_OBJ) $(PROTOCOL_OBJ) | dirs
+$(CLIENT_TEXT_BIN): $(CLIENT_TEXT_OBJ) $(CLIENT_GUI_NETWORK_OBJ) $(CLIENT_TEXT_MESSAGES_OBJ) $(PROTOCOL_OBJ) | dirs
 	$(CC) $(CFLAGS) $(NCURSESW_CFLAGS) -DPORT=$(PORT) -o $@ $^ $(NCURSESW_LIBS) $(SOCKET_LIBS)
 
 $(CLIENT_GUI_BIN): $(CLIENT_GUI_OBJ) $(CLIENT_GUI_NETWORK_OBJ) $(CLIENT_GUI_MESSAGES_OBJ) $(PROTOCOL_OBJ) | dirs
@@ -107,6 +108,9 @@ $(CLIENT_GUI_NETWORK_OBJ): $(SRC_DIR)/client_gui_network.c $(SRC_DIR)/common.h $
 
 $(CLIENT_GUI_MESSAGES_OBJ): $(SRC_DIR)/client_gui_messages.c $(SRC_DIR)/common.h $(SRC_DIR)/client_gui_state.h | dirs
 	$(CC) $(CFLAGS) $(CPPFLAGS) $(RAYLIB_CFLAGS) -c -o $@ $<
+
+$(CLIENT_TEXT_MESSAGES_OBJ): $(SRC_DIR)/client_text_messages.c $(SRC_DIR)/common.h $(SRC_DIR)/client_gui_state.h | dirs
+	$(CC) $(CFLAGS) $(CPPFLAGS) -c -o $@ $<
 
 $(PROTOCOL_OBJ): $(SRC_DIR)/protocol.c $(SRC_DIR)/common.h $(SRC_DIR)/protocol.h | dirs
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c -o $@ $<

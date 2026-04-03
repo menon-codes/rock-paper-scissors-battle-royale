@@ -270,25 +270,36 @@ int main(int argc, char **argv)
     AutoJoinConfig auto_join;
     memset(&auto_join, 0, sizeof(auto_join));
 
-    if (argc >= 2)
-    {
-        initial_name = argv[1];
-    }
-
     if (argc == 5)
     {
+        initial_name = argv[1];
         auto_join.enabled = 1;
         if (!parse_choice_arg(argv[2], &auto_join.choice) ||
             !parse_spawn_arg(argv[3], GRID_W, &auto_join.spawn_x) ||
             !parse_spawn_arg(argv[4], GRID_H, &auto_join.spawn_y))
         {
-            fprintf(stderr, "Usage: %s [name [R|P|S x y]]\n", argv[0]);
+            fprintf(stderr, "Usage: %s [name] [R|P|S x y]\n", argv[0]);
             return 1;
         }
     }
-    else if (!(argc == 1 || argc == 2))
+    else if (argc == 4)
     {
-        fprintf(stderr, "Usage: %s [name [R|P|S x y]]\n", argv[0]);
+        auto_join.enabled = 1;
+        if (!parse_choice_arg(argv[1], &auto_join.choice) ||
+            !parse_spawn_arg(argv[2], GRID_W, &auto_join.spawn_x) ||
+            !parse_spawn_arg(argv[3], GRID_H, &auto_join.spawn_y))
+        {
+            fprintf(stderr, "Usage: %s [name] [R|P|S x y]\n", argv[0]);
+            return 1;
+        }
+    }
+    else if (argc == 2)
+    {
+        initial_name = argv[1];
+    }
+    else if (argc != 1)
+    {
+        fprintf(stderr, "Usage: %s [name] [R|P|S x y]\n", argv[0]);
         return 1;
     }
 
