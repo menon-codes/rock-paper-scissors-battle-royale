@@ -3,6 +3,9 @@
 #include "protocol.h"
 
 #include <errno.h>
+#ifndef _WIN32
+#include <signal.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

@@ -14,8 +14,8 @@ RAYLIB_LOCAL_HEADER=$(RAYLIB_BUILD_DIR)/include/raylib.h
 RAYLIB_LOCAL_LIB=$(RAYLIB_BUILD_DIR)/libraylib.a
 
 ifeq ($(wildcard $(RAYLIB_LOCAL_HEADER)),)
-RAYLIB_CFLAGS := $(shell pkg-config --cflags raylib)
-RAYLIB_LIBS := $(shell pkg-config --libs raylib)
+RAYLIB_CFLAGS = $(shell pkg-config --cflags raylib)
+RAYLIB_LIBS = $(shell pkg-config --libs raylib)
 else
 RAYLIB_CFLAGS := -I$(RAYLIB_BUILD_DIR)/include
 ifeq ($(OS),Windows_NT)
@@ -64,6 +64,8 @@ TEST_BIN=$(TEST_BIN_DIR)/unit_tests
 INTEGRATION_TEST_BIN=$(TEST_BIN_DIR)/integration_tests
 
 all: $(SERVER_BIN) $(CLIENT_TEXT_BIN) $(CLIENT_GUI_BIN)
+
+cli: $(SERVER_BIN) $(CLIENT_TEXT_BIN)
 
 test: $(TEST_BIN)
 	$(TEST_BIN)
