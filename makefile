@@ -14,12 +14,14 @@ CPPFLAGS=-I$(SRC_DIR)
 ifeq ($(OS),Windows_NT)
 SOCKET_LIBS=-lws2_32
 NCURSES_LIBS=
+MATH_LIBS=
 MKDIR_BIN=if not exist "$(subst /,\,$(BIN_DIR))" mkdir "$(subst /,\,$(BIN_DIR))"
 MKDIR_OBJ=if not exist "$(subst /,\,$(OBJ_DIR))" mkdir "$(subst /,\,$(OBJ_DIR))"
 MKDIR_TEST_BIN=if not exist "$(subst /,\,$(TEST_BIN_DIR))" mkdir "$(subst /,\,$(TEST_BIN_DIR))"
 else
 SOCKET_LIBS=
 NCURSES_LIBS=-lncurses
+MATH_LIBS=-lm
 MKDIR_BIN=mkdir -p $(BIN_DIR)
 MKDIR_OBJ=mkdir -p $(OBJ_DIR)
 MKDIR_TEST_BIN=mkdir -p $(TEST_BIN_DIR)
@@ -53,7 +55,7 @@ integration-test: $(SERVER_BIN) $(INTEGRATION_TEST_BIN)
 test-all: test integration-test
 
 $(SERVER_BIN): $(SERVER_OBJ) $(SERVER_STATE_OBJ) $(SERVER_COMMANDS_OBJ) $(PROTOCOL_OBJ) $(GAME_OBJ) $(CHASE_SIMULATION_OBJ) | dirs
-	$(CC) $(CFLAGS) -DPORT=$(PORT) -o $@ $^ $(SOCKET_LIBS)
+	$(CC) $(CFLAGS) -DPORT=$(PORT) -o $@ $^ $(MATH_LIBS) $(SOCKET_LIBS)
 
 $(CLIENT_TEXT_BIN): $(CLIENT_TEXT_OBJ) $(PROTOCOL_OBJ) | dirs
 	$(CC) $(CFLAGS) -DPORT=$(PORT) -o $@ $^ $(SOCKET_LIBS)
@@ -62,7 +64,7 @@ $(CLIENT_NCURSES_BIN): $(CLIENT_NCURSES_OBJ) $(PROTOCOL_OBJ) | dirs
 	$(CC) $(CFLAGS) -DPORT=$(PORT) -o $@ $^ $(NCURSES_LIBS) $(SOCKET_LIBS)
 
 $(TEST_BIN): $(TEST_RUNNER_OBJ) $(SERVER_STATE_OBJ) $(SERVER_COMMANDS_OBJ) $(PROTOCOL_OBJ) $(GAME_OBJ) $(CHASE_SIMULATION_OBJ) | dirs
-	$(CC) $(CFLAGS) -DPORT=$(PORT) -o $@ $^ $(SOCKET_LIBS)
+	$(CC) $(CFLAGS) -DPORT=$(PORT) -o $@ $^ $(MATH_LIBS) $(SOCKET_LIBS)
 
 $(INTEGRATION_TEST_BIN): $(INTEGRATION_RUNNER_OBJ) $(PROTOCOL_OBJ) | dirs
 	$(CC) $(CFLAGS) -DPORT=$(PORT) -o $@ $^ $(SOCKET_LIBS)
@@ -88,7 +90,7 @@ $(PROTOCOL_OBJ): $(SRC_DIR)/protocol.c $(SRC_DIR)/common.h $(SRC_DIR)/protocol.h
 $(GAME_OBJ): $(SRC_DIR)/game.c $(SRC_DIR)/common.h $(SRC_DIR)/game.h | dirs
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c -o $@ $<
 
-$(CHASE_SIMULATION_OBJ): $(SRC_DIR)/chase_simulation.c $(SRC_DIR)/common.h $(SRC_DIR)/chase_simulation.h | dirs
+$(CHASE_SIMULATION_OBJ): $(SRC_DIR)/chase_simulation.c $(SRC_DIR)/common.h $(SRC_DIR)/chase_simulation.h $(SRC_DIR)/game.h | dirs
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c -o $@ $<
 
 $(TEST_RUNNER_OBJ): $(TEST_DIR)/test_runner.c $(SRC_DIR)/common.h $(SRC_DIR)/game.h $(SRC_DIR)/protocol.h $(SRC_DIR)/server_state.h $(SRC_DIR)/server_commands.h | dirs

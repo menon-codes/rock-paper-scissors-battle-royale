@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 /*
  * ncurses terminal client for live grid visualization.
@@ -30,7 +31,7 @@
 #define PORT 4242
 #endif
 
-#define UI_TICK_USEC 100000
+#define UI_TICK_USEC 50000
 #define MIN_ROWS_STACKED 18
 #define MIN_COLS_STACKED 40
 #define SIDEBAR_WIDTH 38
@@ -65,6 +66,13 @@ typedef struct
 } UiState;
 
 static int curses_started = 0;
+
+static double now_seconds(void)
+{
+    struct timespec ts;
+    (void)timespec_get(&ts, TIME_UTC);
+    return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
+}
 
 static void fatal(const char *msg)
 {
@@ -790,6 +798,8 @@ int main(int argc, char **argv)
     (void)send_line(fd, "GET_STATE");
     set_banner(&ui, "Connected to %s", host);
 
+    double last_state_poll = now_seconds();
+
     int running = 1;
     while (running)
     {
@@ -809,9 +819,11 @@ int main(int argc, char **argv)
             fatal("select");
         }
 
-        if (ready == 0)
+        double now = now_seconds();
+        if (now - last_state_poll >= 1.0)
         {
             (void)send_line(ui.fd, "GET_STATE");
+            last_state_poll = now;
         }
 
         if (ready > 0 && FD_ISSET(fd, &readfds))
