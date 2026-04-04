@@ -448,6 +448,13 @@ static void reevaluate_round_active(ServerState *s)
 	if (active_alive_count(s) <= 1)
 	{
 		end_game(s);
+		return;
+	}
+
+	if (all_alive_same_choice(s))
+	{
+		begin_repicks(s);
+		return;
 	}
 }
 

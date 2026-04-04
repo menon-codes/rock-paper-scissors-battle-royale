@@ -2,6 +2,7 @@
 #include "game.h"
 #include "protocol.h"
 
+#include <signal.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,8 +23,8 @@
 #define PORT 4242
 #endif
 
-#define CHASE_TICK_SECONDS 0.016667
-#define CHASE_TICK_USEC 16667
+#define CHASE_TICK_SECONDS 0.05
+#define CHASE_TICK_USEC 50000
 
 static void fatal(const char *msg)
 {
