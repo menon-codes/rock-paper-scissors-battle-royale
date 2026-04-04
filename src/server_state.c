@@ -448,6 +448,13 @@ static void reevaluate_round_active(ServerState *s)
 	if (active_alive_count(s) <= 1)
 	{
 		end_game(s);
+		return;
+	}
+
+	if (all_alive_same_choice(s))
+	{
+		begin_repicks(s);
+		return;
 	}
 }
 
@@ -539,96 +546,3 @@ void expire_unready_setup_players(ServerState *s)
 	}
 }
 
-void resolve_round(ServerState *s)
-{
-	Pair pairs[MAX_PLAYERS / 2];
-	int bye_index = -1;
-	int pair_count = build_pairs(s, pairs, MAX_PLAYERS / 2, &bye_index);
-
-	for (int k = 0; k < pair_count; k++)
-	{
-		Player *a = &s->players[pairs[k].a];
-		Player *b = &s->players[pairs[k].b];
-
-		float ax = a->x;
-		float ay = a->y;
-		float bx = b->x;
-		float by = b->y;
-
-		int r = rps_result(a->choice, b->choice);
-
-		if (r == 1)
-		{
-			a->x = bx;
-			a->y = by;
-
-			b->alive = 0;
-			b->in_round = 0;
-			b->x = -1.0f;
-			b->y = -1.0f;
-
-			queue_broadcast(s, "PAIR %s %s %c %c WINNER %s MOVE %.3f %.3f",
-							a->name, b->name, a->choice, b->choice,
-							a->name, a->x, a->y);
-			if (b->connected)
-			{
-				if (queue_line_checked(b, "ELIMINATED lost") < 0)
-				{
-					drop_player(s, pairs[k].b, 0);
-				}
-			}
-		}
-		else if (r == -1)
-		{
-			b->x = ax;
-			b->y = ay;
-
-			a->alive = 0;
-			a->in_round = 0;
-			a->x = -1.0f;
-			a->y = -1.0f;
-
-			queue_broadcast(s, "PAIR %s %s %c %c WINNER %s MOVE %.3f %.3f",
-							a->name, b->name, a->choice, b->choice,
-							b->name, b->x, b->y);
-			if (a->connected)
-			{
-				if (queue_line_checked(a, "ELIMINATED lost") < 0)
-				{
-					drop_player(s, pairs[k].a, 0);
-				}
-			}
-		}
-		else
-		{
-			queue_broadcast(s, "PAIR %s %s %c %c TIE",
-							a->name, b->name, a->choice, b->choice);
-		}
-	}
-
-	if (bye_index != -1)
-	{
-		queue_broadcast(s, "BYE %s", s->players[bye_index].name);
-	}
-
-	for (int i = 0; i < MAX_PLAYERS; i++)
-	{
-		s->players[i].in_round = 0;
-	}
-
-	broadcast_positions(s);
-
-	if (active_alive_count(s) <= 1)
-	{
-		end_game(s);
-		return;
-	}
-
-	if (all_alive_same_choice(s))
-	{
-		begin_repicks(s);
-		return;
-	}
-
-	start_active_round(s);
-}

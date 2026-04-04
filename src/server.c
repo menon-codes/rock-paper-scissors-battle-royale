@@ -2,6 +2,7 @@
 #include "game.h"
 #include "protocol.h"
 
+#include <signal.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,8 +23,8 @@
 #define PORT 4242
 #endif
 
-#define CHASE_TICK_SECONDS 0.016667
-#define CHASE_TICK_USEC 16667
+#define CHASE_TICK_SECONDS 0.05
+#define CHASE_TICK_USEC 50000
 
 static void fatal(const char *msg)
 {
@@ -208,16 +209,18 @@ static void process_timers(ServerState *state, double *last_chase_tick)
     if (state->phase == PHASE_ROUND_ACTIVE && elapsed >= CHASE_TICK_SECONDS)
     {
         *last_chase_tick = now;
-        int match_ended = simulate_chase_tick(state, (float)CHASE_TICK_SECONDS);
 
-        /* Send updated positions after each chase tick. */
+        (void)simulate_chase_tick(state, (float)CHASE_TICK_SECONDS);
+
+        /* Push updated positions after each chase tick. */
         broadcast_positions(state);
 
-        if (match_ended)
-        {
-            /* One type remains: game over. Let reevaluate_state handle the transition. */
-            reevaluate_state(state);
-        }
+        /*
+         * Let the server state machine remain the single authority for deciding:
+         * - GAME_OVER when only one alive player remains
+         * - REPICK when multiple alive players remain but all share one type
+         */
+        reevaluate_state(state);
     }
 }
 
