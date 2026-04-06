@@ -222,11 +222,6 @@ int main(void)
 {
     signal(SIGPIPE, SIG_IGN);
 
-    if (net_init() != 0)
-    {
-        fatal("WSAStartup");
-    }
-
     socket_t listen_fd = create_listen_socket();
     const char *auto_exit_env = getenv("RPS_TEST_AUTO_EXIT");
     int auto_exit_for_tests = (auto_exit_env != NULL && auto_exit_env[0] != '\0' && auto_exit_env[0] != '0');
@@ -270,6 +265,5 @@ int main(void)
     }
 
     CLOSESOCKET(listen_fd);
-    net_cleanup();
     return 0;
 }

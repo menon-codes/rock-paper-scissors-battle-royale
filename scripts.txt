@@ -54,7 +54,7 @@ Script:
 
 [0:10 - 0:20] Scope note
 "In this demo we are focusing only on our socket-based terminal flow."
-"We are intentionally ignoring all client_gui code and anything Windows-specific."
+"This branch is CLI-only and uses our POSIX socket implementation."
 "We are running everything in tmux with CLI clients."
 
 [0:20 - 1:30] Part 1: Feature Demo (user perspective)

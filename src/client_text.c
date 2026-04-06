@@ -386,9 +386,6 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    if (net_init() != 0)
-        fatal("WSAStartup");
-
     socket_t fd = connect_to_server(host, PORT);
     if (fd == INVALID_SOCKET)
         fatal("connect");
@@ -596,6 +593,5 @@ int main(int argc, char **argv)
     (void)send_command_checked(fd, &state, "QUIT");
     endwin();
     CLOSESOCKET(fd);
-    net_cleanup();
     return 0;
 }

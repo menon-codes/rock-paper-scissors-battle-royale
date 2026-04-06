@@ -41,17 +41,6 @@ typedef int socket_t;
 #define NET_WOULD_BLOCK(e) ((e) == EAGAIN || (e) == EWOULDBLOCK)
 #define NET_INTERRUPTED(e) ((e) == EINTR)
 
-#define RPS_WINDOWS_SOCKETS 0
-
-static inline int net_init(void)
-{
-    return 0;
-}
-
-static inline void net_cleanup(void)
-{
-}
-
 static inline int net_set_nonblocking(socket_t fd)
 {
     int flags = fcntl(fd, F_GETFL, 0);

@@ -701,12 +701,6 @@ static void test_multiple_same_type_survivors_all_win(void)
 
 int main(void)
 {
-	if (net_init() != 0)
-	{
-		fprintf(stderr, "net_init failed\n");
-		return 1;
-	}
-
 	test_protocol_queue_and_pop();
 	test_protocol_queue_overflow();
 	test_game_core_logic();
@@ -734,8 +728,6 @@ int main(void)
 	test_simulate_chase_tick_winner_detection();
 	test_simulate_chase_tick_multi_player();
 	test_multiple_same_type_survivors_all_win();
-
-	net_cleanup();
 
 	if (g_tests_failed == 0)
 	{

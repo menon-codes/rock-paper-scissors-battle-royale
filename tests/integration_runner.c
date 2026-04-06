@@ -336,12 +336,6 @@ static void test_spawn_taken_over_real_sockets(void)
 
 int main(void)
 {
-	if (net_init() != 0)
-	{
-		fprintf(stderr, "net_init failed\n");
-		return 1;
-	}
-
 	server_pid_t pid = launch_server_process();
 	CHECK(pid > 0);
 
@@ -364,7 +358,6 @@ int main(void)
 	sleep_ms(200);
 
 	stop_server_process(pid);
-	net_cleanup();
 
 	if (g_tests_failed == 0)
 	{
