@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 200809L
 #include "common.h"
 #include "protocol.h"
 
@@ -12,6 +13,7 @@
 #include <signal.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <unistd.h>
 #endif
 
 #ifndef PORT
@@ -222,19 +224,28 @@ static void try_quit(TestClient *c)
 	}
 }
 
+static void expect_prompt(TestClient *c)
+{
+	CHECK(wait_for_substring(c, "INFO connected_send_HELLO_name", 2000) == 1);
+}
+
+static void expect_welcome(TestClient *c)
+{
+	CHECK(wait_for_substring(c, "WELCOME", 2000) == 1);
+}
+
 static void test_handshake_and_duplicate_name(void)
 {
-	TestClient a;
-	TestClient b;
+	TestClient a, b;
 
 	CHECK(connect_client(&a));
 	CHECK(connect_client(&b));
 
-	CHECK(wait_for_substring(&a, "INFO connected_send_HELLO_name", 2000) == 1);
-	CHECK(wait_for_substring(&b, "INFO connected_send_HELLO_name", 2000) == 1);
+	expect_prompt(&a);
+	expect_prompt(&b);
 
 	CHECK(send_line(a.fd, "HELLO alice") == 0);
-	CHECK(wait_for_substring(&a, "WELCOME", 2000) == 1);
+	expect_welcome(&a);
 
 	CHECK(send_line(b.fd, "HELLO alice") == 0);
 	CHECK(wait_for_substring(&b, "ERROR duplicate_name", 2000) == 1);
@@ -247,19 +258,18 @@ static void test_handshake_and_duplicate_name(void)
 
 static void test_join_and_left_broadcast(void)
 {
-	TestClient a;
-	TestClient b;
+	TestClient a, b;
 
 	CHECK(connect_client(&a));
 	CHECK(connect_client(&b));
 
-	CHECK(wait_for_substring(&a, "INFO connected_send_HELLO_name", 2000) == 1);
-	CHECK(wait_for_substring(&b, "INFO connected_send_HELLO_name", 2000) == 1);
+	expect_prompt(&a);
+	expect_prompt(&b);
 
 	CHECK(send_line(a.fd, "HELLO alpha") == 0);
 	CHECK(send_line(b.fd, "HELLO beta") == 0);
-	CHECK(wait_for_substring(&a, "WELCOME", 2000) == 1);
-	CHECK(wait_for_substring(&b, "WELCOME", 2000) == 1);
+	expect_welcome(&a);
+	expect_welcome(&b);
 
 	CHECK(send_line(a.fd, "CHOICE R") == 0);
 	CHECK(send_line(a.fd, "SPAWN 1 1") == 0);
@@ -279,10 +289,10 @@ static void test_get_state_and_repick_error(void)
 	TestClient c;
 
 	CHECK(connect_client(&c));
-	CHECK(wait_for_substring(&c, "INFO connected_send_HELLO_name", 2000) == 1);
+	expect_prompt(&c);
 
 	CHECK(send_line(c.fd, "HELLO gamma") == 0);
-	CHECK(wait_for_substring(&c, "WELCOME", 2000) == 1);
+	expect_welcome(&c);
 
 	CHECK(send_line(c.fd, "GET_STATE") == 0);
 	CHECK(wait_for_substring(&c, "STATE_BEGIN", 2000) == 1);
@@ -293,6 +303,72 @@ static void test_get_state_and_repick_error(void)
 
 	try_quit(&c);
 	disconnect_client(&c);
+}
+
+static void test_bad_command(void)
+{
+	TestClient c;
+
+	CHECK(connect_client(&c));
+	expect_prompt(&c);
+
+	CHECK(send_line(c.fd, "HELLO delta") == 0);
+	expect_welcome(&c);
+
+	CHECK(send_line(c.fd, "UNKNOWN") == 0);
+	CHECK(wait_for_substring(&c, "ERROR bad_command", 2000) == 1);
+
+	try_quit(&c);
+	disconnect_client(&c);
+}
+
+static void test_hello_usage_and_already_registered(void)
+{
+	TestClient c;
+
+	CHECK(connect_client(&c));
+	expect_prompt(&c);
+
+	CHECK(send_line(c.fd, "HELLO") == 0);
+	CHECK(wait_for_substring(&c, "ERROR usage_HELLO_name", 2000) == 1);
+
+	CHECK(send_line(c.fd, "HELLO epsilon") == 0);
+	expect_welcome(&c);
+
+	CHECK(send_line(c.fd, "HELLO zeta") == 0);
+	CHECK(wait_for_substring(&c, "ERROR already_registered", 2000) == 1);
+
+	try_quit(&c);
+	disconnect_client(&c);
+}
+
+static void test_spawn_taken_over_real_sockets(void)
+{
+	TestClient a, b;
+
+	CHECK(connect_client(&a));
+	CHECK(connect_client(&b));
+
+	expect_prompt(&a);
+	expect_prompt(&b);
+
+	CHECK(send_line(a.fd, "HELLO p1") == 0);
+	CHECK(send_line(b.fd, "HELLO p2") == 0);
+	expect_welcome(&a);
+	expect_welcome(&b);
+
+	CHECK(send_line(a.fd, "CHOICE R") == 0);
+	CHECK(send_line(a.fd, "SPAWN 2 2") == 0);
+	CHECK(wait_for_substring(&a, "JOINED_MATCH", 2000) == 1);
+
+	CHECK(send_line(b.fd, "CHOICE P") == 0);
+	CHECK(send_line(b.fd, "SPAWN 2 2") == 0);
+	CHECK(wait_for_substring(&b, "ERROR spawn_taken", 2000) == 1);
+
+	try_quit(&a);
+	try_quit(&b);
+	disconnect_client(&a);
+	disconnect_client(&b);
 }
 
 int main(void)
@@ -306,17 +382,19 @@ int main(void)
 	server_pid_t pid = launch_server_process();
 	CHECK(pid > 0);
 
-	/* Give server time to bind/listen before connecting clients. */
 	sleep_ms(500);
 
-	/* Keep one client connected so test auto-exit does not trigger between subtests. */
+	/* Keep one client connected so auto-exit does not trigger between subtests. */
 	TestClient keeper;
 	CHECK(connect_client(&keeper));
-	CHECK(wait_for_substring(&keeper, "INFO connected_send_HELLO_name", 2000) == 1);
+	expect_prompt(&keeper);
 
 	test_handshake_and_duplicate_name();
 	test_join_and_left_broadcast();
 	test_get_state_and_repick_error();
+	test_bad_command();
+	test_hello_usage_and_already_registered();
+	test_spawn_taken_over_real_sockets();
 
 	try_quit(&keeper);
 	disconnect_client(&keeper);

@@ -204,7 +204,7 @@ static void process_timers(ServerState *state, double *last_chase_tick)
     close_lobby_if_needed(state);
     expire_unready_setup_players(state);
 
-    /* Chase tick loop: 20 Hz = every 50ms (0.05 seconds). */
+    /* Chase tick loop: ~60 Hz = every 16.667ms. */
     double now = now_seconds();
     double elapsed = now - *last_chase_tick;
 

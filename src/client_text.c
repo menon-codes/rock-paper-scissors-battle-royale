@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
 
 #if !RPS_WINDOWS_SOCKETS
 #include <locale.h>
@@ -48,6 +49,30 @@ typedef struct
 } AutoJoinConfig;
 
 #if !RPS_WINDOWS_SOCKETS
+static int send_command_checked(socket_t fd, GuiState *state, const char *fmt, ...)
+{
+    char line[MAX_LINE];
+    va_list args;
+
+    va_start(args, fmt);
+    int n = vsnprintf(line, sizeof(line), fmt, args);
+    va_end(args);
+
+    if (n < 0 || n >= (int)sizeof(line))
+    {
+        snprintf(state->status_text, sizeof(state->status_text), "Outgoing command was too long.");
+        return -1;
+    }
+
+    if (send_line(fd, "%s", line) < 0)
+    {
+        snprintf(state->status_text, sizeof(state->status_text), "Failed to send command to server.");
+        return -1;
+    }
+
+    return 0;
+}
+
 static void fatal(const char *msg)
 {
     perror(msg);
@@ -118,6 +143,51 @@ static int to_grid_coord(float value)
     return (int)(value + 0.5f);
 }
 
+static const char *choice_label(char choice)
+{
+    switch (choice)
+    {
+        case 'R': return "Rock";
+        case 'P': return "Paper";
+        case 'S': return "Scissors";
+        default:  return "-";
+    }
+}
+
+/* Hide all players' picks before the first ROUND_START arrives. */
+static int choices_hidden(const GuiState *state)
+{
+    if (state->game_over)
+    {
+        return 0;
+    }
+
+    if (state->repick_phase)
+    {
+        return 0;
+    }
+
+    return state->round_end_time <= 0.0;
+}
+
+static char displayed_choice_char(const GuiState *state, char choice)
+{
+    if (choices_hidden(state))
+    {
+        return '?';
+    }
+    return choice ? choice : '?';
+}
+
+static const char *displayed_choice_label(const GuiState *state, char choice)
+{
+    if (choices_hidden(state))
+    {
+        return "Hidden";
+    }
+    return choice_label(choice);
+}
+
 static void maybe_send_hello(socket_t fd, GuiState *state)
 {
     if (state->name_registered || state->name_check_pending || state->name_input[0] == '\0')
@@ -126,7 +196,10 @@ static void maybe_send_hello(socket_t fd, GuiState *state)
     }
 
     snprintf(state->pending_name, sizeof(state->pending_name), "%s", state->name_input);
-    send_line(fd, "HELLO %s", state->pending_name);
+    if (send_command_checked(fd, state, "HELLO %s", state->pending_name) < 0)
+    {
+        return;
+    }
     state->name_check_pending = 1;
     state->state_request_sent = 0;
     snprintf(state->status_text, sizeof(state->status_text), "Checking name '%s'...", state->pending_name);
@@ -153,7 +226,7 @@ static void draw_grid(const GuiState *state, int top, int left, int cursor_x, in
                 int py = to_grid_coord(state->players[i].y);
                 if (px == x && py == y)
                 {
-                    marker = state->players[i].choice;
+                    marker = displayed_choice_char(state, state->players[i].choice);
                     break;
                 }
             }
@@ -181,9 +254,9 @@ static void draw_player_list(const GuiState *state, int top, int left, int max_r
             continue;
 
         const char *life = state->players[i].alive ? "alive" : (state->players[i].waiting ? "waiting" : "out");
-        mvprintw(row++, left, "%-10s %c (%4.1f,%4.1f) %-7s",
+        mvprintw(row++, left, "%-10s %-9s (%4.1f,%4.1f) %-7s",
                  state->players[i].name,
-                 state->players[i].choice,
+                 displayed_choice_label(state, state->players[i].choice),
                  state->players[i].x,
                  state->players[i].y,
                  life);
@@ -197,7 +270,9 @@ static void draw_status(const GuiState *state, int top, int left)
     mvprintw(top + 0, left, "Status: %s", state->status_text);
     mvprintw(top + 1, left, "You: %s",
              state->name_registered ? state->my_name : (state->pending_name[0] ? state->pending_name : "(not registered)"));
-    mvprintw(top + 2, left, "Selected choice: %c", state->selected_choice ? state->selected_choice : '-');
+
+    /* Show your own selected choice locally even before round start. */
+    mvprintw(top + 2, left, "Selected choice: %s", choice_label(state->selected_choice));
 
     if (!state->game_over && state->lobby_end_time > now)
     {
@@ -212,16 +287,30 @@ static void draw_status(const GuiState *state, int top, int left)
     if (!state->game_over && !state->repick_phase && state->round_end_time > now)
     {
         int sec = (int)(state->round_end_time - now + 0.999);
-        mvprintw(top + 5, left, "Round ends in: %d", sec);
+        mvprintw(top + 5, left, "Round timer: %d", sec);
+    }
+
+    if (choices_hidden(state))
+    {
+        mvprintw(top + 6, left, "Player picks are hidden until the round starts.");
     }
 
     if (state->repick_phase)
     {
-        mvprintw(top + 6, left, "REPICK PHASE: press R/P/S");
+        mvprintw(top + 7, left, "REPICK PHASE: press R/P/S");
     }
     if (state->game_over)
     {
-        mvprintw(top + 7, left, "GAME OVER. Winner: %s (press M for rematch)", state->winner_name);
+        const char *result = "Game over";
+        if (state->match_result > 0)
+        {
+            result = "You won";
+        }
+        else if (state->match_result < 0)
+        {
+            result = "You lost";
+        }
+        mvprintw(top + 8, left, "%s (press M for rematch)", result);
     }
 }
 
@@ -248,16 +337,16 @@ static void render_ui(const GuiState *state, int cursor_x, int cursor_y, int nam
     mvprintw(1, 2, "Spawn cursor: (%d,%d)", cursor_x, cursor_y);
     mvprintw(2, 2, "Name input: %s%s", state->name_input, name_edit_active ? "_" : "");
 
-    if (rows < 22 || cols < 100)
+    if (rows < 22 || cols < 108)
     {
-        mvprintw(4, 2, "Terminal too small. Resize to at least 100x22.");
+        mvprintw(4, 2, "Terminal too small. Resize to at least 108x22.");
         refresh();
         return;
     }
 
     draw_grid(state, 5, 2, cursor_x, cursor_y);
     draw_player_list(state, 5, 38, rows - 13);
-    draw_status(state, 5, 74);
+    draw_status(state, 5, 78);
     draw_controls(rows, 2, name_edit_active);
     refresh();
 }
@@ -322,7 +411,10 @@ int main(int argc, char **argv)
 
     GuiState state;
     init_gui_state(&state, initial_name);
-    send_line(fd, "GET_STATE");
+    if (send_command_checked(fd, &state, "GET_STATE") == 0)
+    {
+        state.state_request_sent = 1;
+    }
 
     setlocale(LC_ALL, "");
     initscr();
@@ -353,24 +445,30 @@ int main(int argc, char **argv)
             {
                 if (!auto_join.choice_sent)
                 {
-                    send_line(fd, "CHOICE %c", auto_join.choice);
-                    state.state_request_sent = 0;
-                    auto_join.choice_sent = 1;
+                    if (send_command_checked(fd, &state, "CHOICE %c", auto_join.choice) == 0)
+                    {
+                        state.state_request_sent = 0;
+                        auto_join.choice_sent = 1;
+                    }
                 }
 
                 if (state.choice_confirmed && !auto_join.spawn_sent)
                 {
-                    send_line(fd, "SPAWN %d %d", auto_join.spawn_x, auto_join.spawn_y);
-                    state.state_request_sent = 0;
-                    auto_join.spawn_sent = 1;
+                    if (send_command_checked(fd, &state, "SPAWN %d %d", auto_join.spawn_x, auto_join.spawn_y) == 0)
+                    {
+                        state.state_request_sent = 0;
+                        auto_join.spawn_sent = 1;
+                    }
                 }
             }
         }
 
         if (!state.state_request_sent)
         {
-            send_line(fd, "GET_STATE");
-            state.state_request_sent = 1;
+            if (send_command_checked(fd, &state, "GET_STATE") == 0)
+            {
+                state.state_request_sent = 1;
+            }
         }
 
         int ch;
@@ -384,8 +482,10 @@ int main(int argc, char **argv)
 
             if (ch == 'g' || ch == 'G')
             {
-                send_line(fd, "GET_STATE");
-                state.state_request_sent = 1;
+                if (send_command_checked(fd, &state, "GET_STATE") == 0)
+                {
+                    state.state_request_sent = 1;
+                }
                 continue;
             }
 
@@ -457,8 +557,10 @@ int main(int argc, char **argv)
 
             if ((ch == 'm' || ch == 'M') && state.game_over)
             {
-                send_line(fd, "REMATCH");
-                state.state_request_sent = 0;
+                if (send_command_checked(fd, &state, "REMATCH") == 0)
+                {
+                    state.state_request_sent = 0;
+                }
                 continue;
             }
 
@@ -468,15 +570,19 @@ int main(int argc, char **argv)
 
                 if (!state.game_over && state.repick_phase)
                 {
-                    send_line(fd, "REPICK %c", c);
-                    state.state_request_sent = 0;
+                    if (send_command_checked(fd, &state, "REPICK %c", c) == 0)
+                    {
+                        state.state_request_sent = 0;
+                    }
                     continue;
                 }
 
                 if (state.name_registered && !state.game_over && state.can_attempt_join && !state.joined_match && !state.repick_phase)
                 {
-                    send_line(fd, "CHOICE %c", c);
-                    state.state_request_sent = 0;
+                    if (send_command_checked(fd, &state, "CHOICE %c", c) == 0)
+                    {
+                        state.state_request_sent = 0;
+                    }
                     continue;
                 }
             }
@@ -486,8 +592,10 @@ int main(int argc, char **argv)
             {
                 if (state.choice_confirmed)
                 {
-                    send_line(fd, "SPAWN %d %d", cursor_x, cursor_y);
-                    state.state_request_sent = 0;
+                    if (send_command_checked(fd, &state, "SPAWN %d %d", cursor_x, cursor_y) == 0)
+                    {
+                        state.state_request_sent = 0;
+                    }
                 }
                 continue;
             }
@@ -497,7 +605,7 @@ int main(int argc, char **argv)
         napms(33);
     }
 
-    send_line(fd, "QUIT");
+    (void)send_command_checked(fd, &state, "QUIT");
     endwin();
     CLOSESOCKET(fd);
     net_cleanup();

@@ -173,7 +173,7 @@ static void handle_hello_command(ServerState *s, int idx, const char *line)
 		return;
 	}
 
-	if (sscanf(line + 6, "%31s", name) != 1)
+	if (sscanf(line, "HELLO %31s", name) != 1)
 	{
 		(void)queue_line(p, "ERROR usage_HELLO_name");
 		return;
@@ -340,6 +340,7 @@ void handle_command(ServerState *s, int idx, const char *line)
 	Player *p = &s->players[idx];
 	/* Prefix/keyword dispatch table for supported client commands. */
 	static const CommandDispatchEntry dispatch[] = {
+		{"HELLO", 1, handle_hello_command},
 		{"HELLO ", 0, handle_hello_command},
 		{"GET_STATE", 1, handle_get_state_command},
 		{"CHOICE ", 0, handle_choice_command},

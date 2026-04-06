@@ -87,7 +87,7 @@ Run on screen:
 
 "Next, in src/protocol.c, queue_line appends newline-terminated messages to per-player output buffers, read_into_player_buffer accumulates incoming bytes, and pop_line extracts complete protocol lines."
 
-"In src/server_commands.c, handle_command routes protocol lines such as HELLO, CHOICE, SPAWN, GET_STATE, and QUIT."
+"In src/server_commands.c, handle_command routes protocol lines such as HELLO, REPICK, CHOICE, SPAWN, GET_STATE, and QUIT."
 
 "In src/server_state.c, maybe_admit_player and the broadcast helpers manage match admission, phase changes, and state updates sent to all connected clients."
 

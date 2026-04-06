@@ -104,9 +104,9 @@ static void parse_state_snapshot_line(GuiState *state, const char *line)
 	if (sscanf(line, "ROUND_START %d %d", &round_no, &seconds) == 2)
 	{
 		state->repick_phase = 0;
-		state->round_end_time = rps_now_seconds() + seconds;
+		state->round_end_time = (seconds > 0) ? (rps_now_seconds() + seconds) : 0.0;
 		state->setup_end_time = 0.0;
-		snprintf(state->status_text, sizeof(state->status_text), "Round %d started", round_no);
+		snprintf(state->status_text, sizeof(state->status_text), "Match started");
 		return;
 	}
 
@@ -171,8 +171,23 @@ static void parse_state_snapshot_line(GuiState *state, const char *line)
 	if (sscanf(line, "GAME_OVER %31s", name1) == 1)
 	{
 		state->game_over = 1;
-		snprintf(state->winner_name, sizeof(state->winner_name), "%s", name1);
-		snprintf(state->status_text, sizeof(state->status_text), "Game over. Press M for rematch.");
+		state->round_end_time = 0.0;
+
+		if (strcmp(name1, "WIN") == 0)
+		{
+			state->match_result = 1;
+			snprintf(state->status_text, sizeof(state->status_text), "You won. Press M for rematch.");
+		}
+		else if (strcmp(name1, "LOSE") == 0)
+		{
+			state->match_result = -1;
+			snprintf(state->status_text, sizeof(state->status_text), "You lost. Press M for rematch.");
+		}
+		else
+		{
+			state->match_result = 0;
+			snprintf(state->status_text, sizeof(state->status_text), "Game over. Press M for rematch.");
+		}
 		return;
 	}
 }
@@ -211,7 +226,7 @@ static void parse_general_line(GuiState *state, const char *line)
 		state->lobby_end_time = 0.0;
 		state->setup_end_time = 0.0;
 		state->round_end_time = 0.0;
-		state->winner_name[0] = '\0';
+		state->match_result = 0;
 		snprintf(state->status_text, sizeof(state->status_text), "Match reset. You are spectating again.");
 		return;
 	}

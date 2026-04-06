@@ -377,7 +377,7 @@ static void test_close_lobby_not_enough_players(void)
 
 	close_lobby_if_needed(&s);
 	CHECK(s.phase == PHASE_GAME_OVER);
-	CHECK(player_out_contains(&s.players[0], "GAME_OVER solo\n"));
+	CHECK(player_out_contains(&s.players[0], "GAME_OVER WIN\n"));
 }
 
 static void test_expire_unready_setup_players(void)
@@ -427,7 +427,8 @@ static void test_resolve_round_winner_path(void)
 	CHECK(s.players[0].x == 3 && s.players[0].y == 3);
 	CHECK(s.phase == PHASE_GAME_OVER);
 	CHECK(player_out_contains(&s.players[1], "ELIMINATED lost\n"));
-	CHECK(player_out_contains(&s.players[0], "GAME_OVER a\n"));
+	CHECK(player_out_contains(&s.players[0], "GAME_OVER WIN\n"));
+	CHECK(player_out_contains(&s.players[1], "GAME_OVER LOSE\n"));
 }
 
 static void test_resolve_round_tie_starts_repick(void)
@@ -675,6 +676,29 @@ static void test_simulate_chase_tick_multi_player(void)
 	CHECK(s.players[2].alive == 1);
 }
 
+
+static void test_multiple_same_type_survivors_all_win(void)
+{
+	ServerState s;
+	init_server_state(&s);
+
+	setup_registered_admitted_player(&s.players[0], 1, "r1", 0, 0, 'R');
+	setup_registered_admitted_player(&s.players[1], 2, "r2", 1, 0, 'R');
+	setup_registered_admitted_player(&s.players[2], 3, "p1", 5, 0, 'P');
+
+	s.phase = PHASE_ROUND_ACTIVE;
+	s.players[2].alive = 0;
+	s.players[2].x = -1.0f;
+	s.players[2].y = -1.0f;
+
+	reevaluate_state(&s);
+
+	CHECK(s.phase == PHASE_GAME_OVER);
+	CHECK(player_out_contains(&s.players[0], "GAME_OVER WIN\n"));
+	CHECK(player_out_contains(&s.players[1], "GAME_OVER WIN\n"));
+	CHECK(player_out_contains(&s.players[2], "GAME_OVER LOSE\n"));
+}
+
 int main(void)
 {
 	if (net_init() != 0)
@@ -709,6 +733,7 @@ int main(void)
 	test_simulate_chase_tick_same_type_no_collision();
 	test_simulate_chase_tick_winner_detection();
 	test_simulate_chase_tick_multi_player();
+	test_multiple_same_type_survivors_all_win();
 
 	net_cleanup();
 

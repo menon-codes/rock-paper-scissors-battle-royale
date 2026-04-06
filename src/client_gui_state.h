@@ -36,7 +36,7 @@ typedef struct
 	char name_input[MAX_NAME_LENGTH];
 	char pending_name[MAX_NAME_LENGTH];
 	char my_name[MAX_NAME_LENGTH];
-	char winner_name[MAX_NAME_LENGTH];
+	int match_result; /* 1 = won, -1 = lost, 0 = unknown/not finished */
 
 	/* Registration and snapshot synchronization flags. */
 	int name_registered;
