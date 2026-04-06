@@ -53,17 +53,19 @@ Script:
 "Hi, this is Group 55047. Team members are Aditya Menon and Aeriz Conde."
 
 [0:10 - 0:20] Scope note
-"In this demo we are focusing only on our socket-based terminal flow. We are intentionally ignoring all client_gui code and anything Windows-specific. We are running everything in tmux with CLI clients."
+"In this demo we are focusing only on our socket-based terminal flow."
+"We are intentionally ignoring all client_gui code and anything Windows-specific."
+"We are running everything in tmux with CLI clients."
 
 [0:20 - 1:30] Part 1: Feature Demo (user perspective)
 "I am in the project root. First I build only the CLI targets:"
 
-Run on screen:
+On-screen command:
 make cli
 
 "Now I launch our tmux session script:"
 
-Run on screen:
+On-screen command:
 ./scripts/run_5_cli_clients.sh
 
 "This starts one server window and several terminal client windows. Each client is a separate process connected to the same TCP server."
@@ -79,23 +81,28 @@ Run on screen:
 [1:30 - 3:00] Part 2: Code Walkthrough (how sockets work)
 "Now I will show where the socket logic from the demo is implemented."
 
-"First, in src/server.c, the main server loop creates the listen socket, builds fd sets, and calls select in one event loop."
+"I will trace one concrete path: a client sends CHOICE R."
 
-"Still in src/server.c, readable client sockets go through read_into_player_buffer and pop_line, then each full line is dispatched to handle_command."
+"On the client side, send_line writes a newline-delimited protocol message like CHOICE R to the TCP socket."
 
-"Also in src/server.c, writable sockets are handled separately by process_player_writes, which calls flush_player_output. This is what prevents one slow client from blocking everyone else."
+"In the server event loop, select marks that client socket as readable. The server reads raw bytes into that player's input buffer, then pop_line extracts one complete command at a time."
 
-"Next, in src/protocol.c, queue_line appends newline-terminated messages to per-player output buffers, read_into_player_buffer accumulates incoming bytes, and pop_line extracts complete protocol lines."
+"That complete line is passed to handle_command, which validates the request and updates server state. For join flow, CHOICE and SPAWN eventually trigger maybe_admit_player."
 
-"In src/server_commands.c, handle_command routes protocol lines such as HELLO, REPICK, CHOICE, SPAWN, GET_STATE, and QUIT."
+"The server does not immediately block on send calls to every client. Instead, it queues outbound lines into per-player output buffers using queue_line."
 
-"In src/server_state.c, maybe_admit_player and the broadcast helpers manage match admission, phase changes, and state updates sent to all connected clients."
+"On later iterations, select marks sockets writable, and flush_player_output sends as much as each socket can accept."
+"If one client is slow, its remaining bytes stay buffered while the server continues servicing everyone else."
 
-"On the client side, our terminal client is in src/client_text.c. It runs a non-blocking loop and uses pump_network to receive updates continuously."
+"That is the key non-blocking design: reads, command handling, and writes are separated, so one client cannot freeze the whole match."
 
-"The network pump itself is in src/client_gui_network.c and is shared by our text client path in this branch. It uses select plus line parsing to process incoming server data without blocking."
+"For fan-out, server_state broadcasts updates such as JOINED, ROUND_START, PLAYER snapshots, and GAME_OVER by queueing messages for all connected players."
 
-"That is the complete socket flow for our tmux-based demo: one select-driven server, multiple concurrent terminal clients, and line-based TCP messaging end to end."
+"Each terminal client runs pump_network in a non-blocking loop, reads available bytes, splits them into lines, and updates local UI state from those server messages."
+
+"Disconnects are handled in the same flow: if read returns closed or write fails, the server drops that player, removes their socket from active sets, and reevaluates game state."
+
+"So the full socket data flow is: client command -> buffered server read -> command dispatch and state update -> buffered broadcast writes -> non-blocking client receive and render."
 
 [Optional final 5 seconds if time allows]
 "Thanks for watching."
