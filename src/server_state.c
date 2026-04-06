@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "chase_simulation.h"
 #include "game.h"
 #include "protocol.h"
 
@@ -13,14 +14,6 @@
  * This module is responsible for phase changes, snapshots, round resolution,
  * and join/rematch lifecycle updates.
  */
-
-typedef void (*PhaseHandler)(ServerState *s);
-
-typedef struct
-{
-	Phase phase;
-	PhaseHandler handler;
-} PhaseDispatchEntry;
 
 static long seconds_left(time_t deadline)
 {
@@ -498,25 +491,28 @@ static void reevaluate_round_active(ServerState *s)
 
 void reevaluate_state(ServerState *s)
 {
-	static const PhaseDispatchEntry dispatch[] = {
-		{PHASE_LOBBY_OPEN, reevaluate_lobby_open},
-		{PHASE_SETUP, reevaluate_setup},
-		{PHASE_REPICK, reevaluate_repick},
-		{PHASE_ROUND_ACTIVE, reevaluate_round_active},
-	};
-
 	if (s->phase == PHASE_GAME_OVER)
 	{
 		return;
 	}
 
-	for (size_t i = 0; i < sizeof(dispatch) / sizeof(dispatch[0]); i++)
+	switch (s->phase)
 	{
-		if (dispatch[i].phase == s->phase)
-		{
-			dispatch[i].handler(s);
-			return;
-		}
+		case PHASE_LOBBY_OPEN:
+			reevaluate_lobby_open(s);
+			break;
+		case PHASE_SETUP:
+			reevaluate_setup(s);
+			break;
+		case PHASE_REPICK:
+			reevaluate_repick(s);
+			break;
+		case PHASE_ROUND_ACTIVE:
+			reevaluate_round_active(s);
+			break;
+		case PHASE_GAME_OVER:
+		default:
+			break;
 	}
 }
 
@@ -581,6 +577,31 @@ void expire_unready_setup_players(ServerState *s)
 	if (all_admitted_ready(s))
 	{
 		start_active_round(s);
+	}
+}
+
+void advance_match_timers(ServerState *s, double now, double *last_chase_tick, double chase_tick_seconds)
+{
+	close_lobby_if_needed(s);
+	expire_unready_setup_players(s);
+
+	if (s->phase != PHASE_ROUND_ACTIVE)
+	{
+		return;
+	}
+
+	if (now - *last_chase_tick < chase_tick_seconds)
+	{
+		return;
+	}
+
+	*last_chase_tick = now;
+	int match_ended = simulate_chase_tick(s, (float)chase_tick_seconds);
+	broadcast_positions(s);
+
+	if (match_ended)
+	{
+		reevaluate_state(s);
 	}
 }
 

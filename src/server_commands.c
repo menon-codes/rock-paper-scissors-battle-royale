@@ -15,25 +15,55 @@
  * state, and queues protocol responses.
  */
 
-typedef void (*CommandHandler)(ServerState *s, int idx, const char *line);
-
-typedef struct
-{
-	const char *token;
-	int exact;
-	CommandHandler handler;
-} CommandDispatchEntry;
-
 static long seconds_left(time_t deadline)
 {
 	long rem = (long)(deadline - time(NULL));
 	return rem > 0 ? rem : 0;
 }
 
-static int parse_rps_choice(const char *line, int offset, char *out_choice)
+static int parse_command(const char *line, char *cmd, size_t cmd_sz, const char **args)
+{
+	if (line == NULL || line[0] == '\0')
+	{
+		return 0;
+	}
+
+	const char *space = strchr(line, ' ');
+	if (space == NULL)
+	{
+		snprintf(cmd, cmd_sz, "%s", line);
+		*args = NULL;
+		return 1;
+	}
+
+	size_t cmd_len = (size_t)(space - line);
+	if (cmd_len == 0 || cmd_len >= cmd_sz)
+	{
+		return 0;
+	}
+
+	memcpy(cmd, line, cmd_len);
+	cmd[cmd_len] = '\0';
+
+	space++;
+	while (*space == ' ')
+	{
+		space++;
+	}
+
+	*args = (*space != '\0') ? space : NULL;
+	return 1;
+}
+
+static int parse_rps_choice_arg(const char *arg, char *out_choice)
 {
 	/* Accept uppercase/lowercase and normalize to uppercase. */
-	char choice = line[offset];
+	if (arg == NULL || arg[0] == '\0' || arg[1] != '\0')
+	{
+		return 0;
+	}
+
+	char choice = arg[0];
 
 	if (choice >= 'a' && choice <= 'z')
 	{
@@ -162,7 +192,7 @@ int add_player(ServerState *s, socket_t fd)
 	return -1;
 }
 
-static void handle_hello_command(ServerState *s, int idx, const char *line)
+static void handle_hello_command(ServerState *s, int idx, const char *args)
 {
 	Player *p = &s->players[idx];
 	char name[MAX_NAME_LENGTH];
@@ -173,7 +203,7 @@ static void handle_hello_command(ServerState *s, int idx, const char *line)
 		return;
 	}
 
-	if (sscanf(line, "HELLO %31s", name) != 1)
+	if (args == NULL || sscanf(args, "%31s", name) != 1)
 	{
 		(void)queue_line(p, "ERROR usage_HELLO_name");
 		return;
@@ -194,7 +224,7 @@ static void handle_hello_command(ServerState *s, int idx, const char *line)
 	queue_lobby_status_for_player(s, p);
 }
 
-static void handle_choice_command(ServerState *s, int idx, const char *line)
+static void handle_choice_command(ServerState *s, int idx, const char *args)
 {
 	Player *p = &s->players[idx];
 	char choice;
@@ -204,7 +234,7 @@ static void handle_choice_command(ServerState *s, int idx, const char *line)
 		return;
 	}
 
-	if (!parse_rps_choice(line, 7, &choice))
+	if (!parse_rps_choice_arg(args, &choice))
 	{
 		(void)queue_line(p, "ERROR bad_choice");
 		return;
@@ -217,7 +247,7 @@ static void handle_choice_command(ServerState *s, int idx, const char *line)
 	maybe_admit_player(s, idx);
 }
 
-static void handle_spawn_command(ServerState *s, int idx, const char *line)
+static void handle_spawn_command(ServerState *s, int idx, const char *args)
 {
 	Player *p = &s->players[idx];
 	float x, y;
@@ -227,7 +257,7 @@ static void handle_spawn_command(ServerState *s, int idx, const char *line)
 		return;
 	}
 
-	if (sscanf(line + 6, "%f %f", &x, &y) != 2)
+	if (args == NULL || sscanf(args, "%f %f", &x, &y) != 2)
 	{
 		(void)queue_line(p, "ERROR usage_SPAWN_x_y");
 		return;
@@ -253,7 +283,7 @@ static void handle_spawn_command(ServerState *s, int idx, const char *line)
 	maybe_admit_player(s, idx);
 }
 
-static void handle_repick_command(ServerState *s, int idx, const char *line)
+static void handle_repick_command(ServerState *s, int idx, const char *args)
 {
 	Player *p = &s->players[idx];
 	char choice;
@@ -276,7 +306,7 @@ static void handle_repick_command(ServerState *s, int idx, const char *line)
 		return;
 	}
 
-	if (!parse_rps_choice(line, 7, &choice))
+	if (!parse_rps_choice_arg(args, &choice))
 	{
 		(void)queue_line(p, "ERROR bad_choice");
 		return;
@@ -326,37 +356,58 @@ static void handle_quit_command(ServerState *s, int idx, const char *line)
 	reevaluate_state(s);
 }
 
-static int command_matches(const CommandDispatchEntry *entry, const char *line)
-{
-	if (entry->exact)
-	{
-		return strcmp(line, entry->token) == 0;
-	}
-	return strncmp(line, entry->token, strlen(entry->token)) == 0;
-}
-
 void handle_command(ServerState *s, int idx, const char *line)
 {
 	Player *p = &s->players[idx];
-	/* Prefix/keyword dispatch table for supported client commands. */
-	static const CommandDispatchEntry dispatch[] = {
-		{"HELLO", 1, handle_hello_command},
-		{"HELLO ", 0, handle_hello_command},
-		{"GET_STATE", 1, handle_get_state_command},
-		{"CHOICE ", 0, handle_choice_command},
-		{"SPAWN ", 0, handle_spawn_command},
-		{"REPICK ", 0, handle_repick_command},
-		{"REMATCH", 1, handle_rematch_command},
-		{"QUIT", 1, handle_quit_command},
-	};
+	char cmd[16];
+	const char *args = NULL;
 
-	for (size_t i = 0; i < sizeof(dispatch) / sizeof(dispatch[0]); i++)
+	if (!parse_command(line, cmd, sizeof(cmd), &args))
 	{
-		if (command_matches(&dispatch[i], line))
-		{
-			dispatch[i].handler(s, idx, line);
-			return;
-		}
+		(void)queue_line(p, "ERROR bad_command");
+		return;
+	}
+
+	if (strcmp(cmd, "HELLO") == 0)
+	{
+		handle_hello_command(s, idx, args);
+		return;
+	}
+
+	if (strcmp(cmd, "GET_STATE") == 0)
+	{
+		handle_get_state_command(s, idx, line);
+		return;
+	}
+
+	if (strcmp(cmd, "CHOICE") == 0)
+	{
+		handle_choice_command(s, idx, args);
+		return;
+	}
+
+	if (strcmp(cmd, "SPAWN") == 0)
+	{
+		handle_spawn_command(s, idx, args);
+		return;
+	}
+
+	if (strcmp(cmd, "REPICK") == 0)
+	{
+		handle_repick_command(s, idx, args);
+		return;
+	}
+
+	if (strcmp(cmd, "REMATCH") == 0)
+	{
+		handle_rematch_command(s, idx, line);
+		return;
+	}
+
+	if (strcmp(cmd, "QUIT") == 0)
+	{
+		handle_quit_command(s, idx, line);
+		return;
 	}
 
 	(void)queue_line(p, "ERROR bad_command");
