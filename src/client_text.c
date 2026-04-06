@@ -149,40 +149,6 @@ static const char *choice_label(char choice)
     }
 }
 
-/* Hide all players' picks before the first ROUND_START arrives. */
-static int choices_hidden(const ClientState *state)
-{
-    if (state->game_over)
-    {
-        return 0;
-    }
-
-    if (state->repick_phase)
-    {
-        return 0;
-    }
-
-    return state->round_end_time <= 0.0;
-}
-
-static char displayed_choice_char(const ClientState *state, char choice)
-{
-    if (choices_hidden(state))
-    {
-        return '?';
-    }
-    return choice ? choice : '?';
-}
-
-static const char *displayed_choice_label(const ClientState *state, char choice)
-{
-    if (choices_hidden(state))
-    {
-        return "Hidden";
-    }
-    return choice_label(choice);
-}
-
 static void maybe_send_hello(socket_t fd, ClientState *state)
 {
     if (state->name_registered || state->name_check_pending || state->name_input[0] == '\0')
@@ -221,7 +187,7 @@ static void draw_grid(const ClientState *state, int top, int left, int cursor_x,
                 int py = to_grid_coord(state->players[i].y);
                 if (px == x && py == y)
                 {
-                    marker = displayed_choice_char(state, state->players[i].choice);
+                    marker = state->players[i].choice ? state->players[i].choice : '?';
                     break;
                 }
             }
@@ -251,7 +217,7 @@ static void draw_player_list(const ClientState *state, int top, int left, int ma
         const char *life = state->players[i].alive ? "alive" : (state->players[i].waiting ? "waiting" : "out");
         mvprintw(row++, left, "%-10s %-9s (%4.1f,%4.1f) %-7s",
                  state->players[i].name,
-                 displayed_choice_label(state, state->players[i].choice),
+                 choice_label(state->players[i].choice),
                  state->players[i].x,
                  state->players[i].y,
                  life);
@@ -283,11 +249,6 @@ static void draw_status(const ClientState *state, int top, int left)
     {
         int sec = (int)(state->round_end_time - now + 0.999);
         mvprintw(top + 5, left, "Round timer: %d", sec);
-    }
-
-    if (choices_hidden(state))
-    {
-        mvprintw(top + 6, left, "Player picks are hidden until the round starts.");
     }
 
     if (state->repick_phase)
