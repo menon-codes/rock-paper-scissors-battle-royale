@@ -29,6 +29,9 @@ void close_lobby_if_needed(ServerState *s);
 /* Drop admitted players who did not finish setup before setup deadline. */
 void expire_unready_setup_players(ServerState *s);
 
+/* Advance timer-driven phase updates and the round simulation tick. */
+void advance_match_timers(ServerState *s, double now, double *last_chase_tick, double chase_tick_seconds);
+
 /* Return non-zero when all alive players have submitted REPICK. */
 int all_alive_repicked(ServerState *s);
 

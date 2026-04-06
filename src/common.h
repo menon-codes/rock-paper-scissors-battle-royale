@@ -2,48 +2,14 @@
 #define COMMON_H
 
 /*
- * Cross-platform definitions shared by client and server binaries.
+ * POSIX definitions shared by client and server binaries.
  *
  * This header centralizes:
- * - socket compatibility wrappers for Windows and POSIX;
+ * - socket compatibility wrappers for Linux/macOS builds;
  * - global protocol/game constants;
  * - canonical game/server state structs used across modules.
  */
 
-#if defined(_WIN32) || defined(_WIN64) || defined(_MSC_VER) || defined(__MINGW32__) || defined(__MINGW64__)
-#define RPS_WINDOWS_SOCKETS 1
-#elif defined(__has_include)
-#if __has_include(<winsock2.h>)
-#define RPS_WINDOWS_SOCKETS 1
-#else
-#define RPS_WINDOWS_SOCKETS 0
-#endif
-#else
-#define RPS_WINDOWS_SOCKETS 0
-#endif
-
-#if RPS_WINDOWS_SOCKETS
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#ifndef NOGDI
-#define NOGDI
-#endif
-#ifndef NOUSER
-#define NOUSER
-#endif
-#ifndef NOMMSYSTEM
-#define NOMMSYSTEM
-#endif
-#ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0601
-#endif
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#else
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -51,7 +17,6 @@
 #include <sys/select.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#endif
 
 #include <stddef.h>
 #include <time.h>
@@ -69,54 +34,31 @@
 #define SETUP_SECONDS 20
 #define ROUND_SECONDS 5
 
-#if RPS_WINDOWS_SOCKETS
-typedef SOCKET socket_t;
-#define CLOSESOCKET closesocket
-#define NET_LAST_ERROR() WSAGetLastError()
-#define NET_WOULD_BLOCK(e) ((e) == WSAEWOULDBLOCK)
-#define NET_INTERRUPTED(e) ((e) == WSAEINTR)
-#ifndef STDIN_FILENO
-#define STDIN_FILENO 0
-#endif
-#else
 typedef int socket_t;
 #define INVALID_SOCKET ((socket_t) - 1)
 #define CLOSESOCKET close
 #define NET_LAST_ERROR() errno
 #define NET_WOULD_BLOCK(e) ((e) == EAGAIN || (e) == EWOULDBLOCK)
 #define NET_INTERRUPTED(e) ((e) == EINTR)
-#endif
-
-static inline int net_init(void)
-{
-#if RPS_WINDOWS_SOCKETS
-    WSADATA wsa_data;
-    return WSAStartup(MAKEWORD(2, 2), &wsa_data);
-#else
-    return 0;
-#endif
-}
-
-static inline void net_cleanup(void)
-{
-#if RPS_WINDOWS_SOCKETS
-    WSACleanup();
-#endif
-}
 
 static inline int net_set_nonblocking(socket_t fd)
 {
-#if RPS_WINDOWS_SOCKETS
-    u_long mode = 1;
-    return ioctlsocket(fd, FIONBIO, &mode);
-#else
     int flags = fcntl(fd, F_GETFL, 0);
     if (flags < 0)
         return -1;
     if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0)
         return -1;
     return 0;
-#endif
+}
+
+static inline double rps_now_seconds(void)
+{
+    struct timespec ts;
+    if (timespec_get(&ts, TIME_UTC) == TIME_UTC)
+    {
+        return (double)ts.tv_sec + (double)ts.tv_nsec / 1000000000.0;
+    }
+    return (double)time(NULL);
 }
 
 typedef enum

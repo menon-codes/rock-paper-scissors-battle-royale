@@ -1,161 +1,141 @@
-# Raylib-Quickstart
-A simple cross platform template for setting up a project with the bleeding edge raylib code.
-Works with C or C++.
+# Rock Paper Scissors Battle Royale (TCP + select)
 
-# Basic Setup
-Download this repository to get started.
+A multiplayer client-server game for CSC209 Category 2.
 
-You can download the zip file of the repository from the Green Code button on github. This is the simplest way to get the template to start from.
-Once you have downloaded the template, rename it to your project name.
+One server process runs the match. Multiple terminal clients connect over TCP sockets. The server is authoritative: it owns game state, validates commands, runs simulation ticks, and broadcasts updates.
 
-or
+## What This Project Demonstrates
 
-Clone the repository with git, from the url
-```
-https://github.com/raylib-extras/raylib-quickstart.git
-```
+- TCP client-server communication
+- One-process concurrency with select()
+- Non-blocking sockets
+- Buffered line-based protocol framing
+- Robust handling of disconnects and slow clients
 
-If you are using a command line git client you can use the command below to download and rename the template in one step
-```
-git clone https://github.com/raylib-extras/raylib-quickstart.git [name-for-your-project-here]
-```
+## Requirements
 
-# Naming projects
-* Replace the placeholder with your desired project name when running the git clone command above.
-* __Do not name your game project 'raylib', it will conflict with the raylib library.__
-* If you have used custom game name with __git clone__, there is no need to rename it again.
+- Linux or macOS (POSIX sockets)
+- gcc
+- make
+- ncurses
+- tmux
 
+## Build
 
-## Supported Platforms
-Quickstart supports the main 3 desktop platforms:
-* Windows
-* Linux
-* MacOS
+Build server + terminal client:
 
-# VSCode Users (all platforms)
-*Note* You must have a compiler toolchain installed in addition to vscode.
-
-1. Download the quickstart
-2. Rename the folder to your game name
-3. Open the folder in VSCode
-4. Run the build task ( CTRL+SHIFT+B or F5 )
-5. You are good to go
-
-# Windows Users
-There are two compiler toolchains available for windows, MinGW-W64 (a free compiler using GCC), and Microsoft Visual Studio
-## Using MinGW-W64
-* Rename the folder to your game name
-* Double click the `build-MinGW-W64.bat` file
-* CD into the folder in your terminal
-  * if you are using the W64devkit and have not added it to your system path environment variable, you must use the W64devkit.exe terminal, not CMD.exe
-  * If you want to use cmd.exe or any other terminal, please make sure that gcc/mingw-W64 is in your path environment variable.
-* run `make`
-* You are good to go
-
-### Note on MinGW-64 versions
-Make sure you have a modern version of MinGW-W64 (not mingw).
-The best place to get it is from the W64devkit from
-https://github.com/skeeto/w64devkit/releases
-
-or the version installed with the raylib installer
-
-#### If you have installed raylib from the installer
-Make sure you have added the path
-
-`C:\raylib\w64devkit\bin`
-
-To your path environment variable so that the compiler that came with raylib can be found.
-
-DO NOT INSTALL ANOTHER MinGW-W64 from another source such as msys2, you don't need it.
-
-## Microsoft Visual Studio 2026
-* Rename the folder to your game name
-* Run `build-VisualStudio2026.bat`
-* double click the `.slnx` file that is generated
-* develop your game
-* you are good to go
-
-# Linux Users
-* Rename the folder to your game name
-* CD into the build folder
-* run `./premake5 gmake`
-* CD back to the root
-* run `make`
-* you are good to go
-
-# MacOS Users
-* Rename the folder to your game name
-* CD into the build folder
-* run `./premake5.osx gmake`
-* CD back to the root
-* run `make`
-* you are good to go
-
-# Output files
-The built code will be in the bin dir
-
-# Working directories and the resources folder
-The example uses a utility function from `path_utils.h` that will find the resources dir and set it as the current working directory. This is very useful when starting out. If you wish to manage your own working directory you can simply remove the call to the function and the header.
-
-# Changing to C++
-Simply rename `src/main.c` to `src/main.cpp` and re-run the steps above and do a clean build.
-
-# Using your own code
-Simply remove `src/main.c` and replace it with your code, and re-run the steps above and do a clean build.
-
-# Building for other OpenGL targets
-If you need to build for a different OpenGL version than the default (OpenGL 3.3) you can specify an OpenGL version in your premake command line. Just modify the bat file or add the following to your command line
-
-## For OpenGL 1.1
-`--graphics=opengl11`
-
-## For OpenGL 2.1
-`--graphics=opengl21`
-
-## For OpenGL 4.3
-`--graphics=opengl43`
-
-## For OpenGLES 2.0
-`--graphics=opengles2`
-
-## For OpenGLES 3.0
-`--graphics=opengles3`
-
-## For Software Rendering
-`--graphics=software`
-
-*Note*
-Sofware rendering does not work with glfw, use Win32 or SDL platforms
-`--backend=win32`
-
-# Adding External Libraries 
-
-Quickstart is intentionally minimal — it only includes what is required to compile and run a basic raylib project.  
-If you want to use extra libraries, you can add them to the `build/premake5.lua` file yourself using the links function.
-
-You can find the documentation for the links function here https://premake.github.io/docs/links/
-
-### Example: adding the required libraries for tinyfiledialogs on Windows
-tinyfiledialogs requires extra Windows system libraries.
-The premake file uses filters to define options that are platform specific
-https://premake.github.io/docs/Filters/
-
-Using the windows filter adds these libraries only to the windows build.
-```
-filter "system:windows"
-    links {
-        "Comdlg32",
-        "User32",
-        "Ole32",
-        "Shell32"
-    }
+```bash
+make
 ```
 
-### Cross-platform reminder
-If you add a library, make sure to add its required dependencies for all platforms you plan to support (Windows, Linux, MacOS).
-Different libraries will have different dependencies on different platforms.
+Build only CLI targets:
 
+```bash
+make cli
+```
 
-# License
-Raylib-Quickstart by Jeffery Myers is marked with CC0 1.0. To view a copy of this license, visit https://creativecommons.org/publicdomain/zero/1.0/
+## Run
 
+Start the full tmux demo session:
+
+```bash
+./scripts/run_5_cli_clients.sh
+```
+
+This script:
+
+- stops old tmux/process state for this repo
+- rebuilds the project
+- starts one server
+- opens four client panes
+- attaches to the tmux session
+
+Manual run (separate terminals):
+
+```bash
+./build/bin/server
+./build/bin/client_text alice
+./build/bin/client_text bob
+```
+
+## tmux Controls You Need
+
+Inside the demo session:
+
+- Ctrl+b then o: move to the next pane (most important while presenting)
+- Ctrl+b then Arrow key: move to pane in that direction
+- Ctrl+b then n / p: next or previous window
+- Ctrl+b then d: detach from tmux session
+
+## Testing
+
+Unit tests:
+
+```bash
+make test
+```
+
+Integration tests:
+
+```bash
+make integration-test
+```
+
+All tests:
+
+```bash
+make test-all
+```
+
+## Where The Major Socket/select Code Is
+
+Start here if you want to understand networking quickly:
+
+- src/server.c
+  - create_listen_socket: creates listening TCP socket
+  - build_select_sets: prepares read/write fd sets
+  - main: select() loop, accept, read, write, and timer progression
+  - accept_new_clients, process_player_reads, process_player_writes: core socket I/O flow
+
+- src/protocol.c
+  - connect_to_server: client TCP connect
+  - send_line: newline-delimited send helper
+  - queue_line + flush_player_output: buffered non-blocking server writes
+  - read_into_player_buffer + pop_line: recv buffering and message framing
+
+- src/server_commands.c
+  - handle_command: parses one client command line and dispatches
+  - add_player: allocates a slot for a newly accepted socket
+
+- src/server_state.c
+  - state transitions and server broadcasts
+  - advance_match_timers: lobby/setup timers and chase tick progression
+
+- src/client_network.c
+  - pump_client_network: client-side non-blocking receive loop (uses select + recv helpers)
+
+## Protocol Summary
+
+Client -> Server commands:
+
+- HELLO <name>
+- CHOICE <R|P|S>
+- SPAWN <x> <y>
+- GET_STATE
+- REPICK <R|P|S>
+- REMATCH
+- QUIT
+
+Server -> Client messages include:
+
+- INFO, WELCOME, ERROR
+- LOBBY_OPEN / LOBBY_CLOSED / SETUP_OPEN
+- JOINED, LEFT, ROUND_START
+- REPICK_START / REPICK_DONE
+- STATE_BEGIN ... PLAYER ... STATE_END
+- GAME_OVER
+
+## Notes
+
+- The gameplay is terminal-first in this branch (no GUI requirement).
+- Default port is 4242. You can override with PORT when running scripts or make commands.

@@ -1,0 +1,108 @@
+Your video must be approximately 3 minutes long. TAs will stop watching after 5
+minutes. Not all team members need to appear in the video. Upload to YouTube (unlisted
+is fine) and test the link before submitting.
+Video Structure
+First, your video should begin with a shot that includes your MarkUs group name and the
+names of each of your team members. This could be a screen shot of a text file with this
+data. It does not need to be fancy.
+Divide your video into the following two parts:
+Part 1 — Feature Demo (approximately 1.5 minutes): Select one feature of your
+program that demonstrates the use of either pipes or sockets. Run your program live and
+walk the viewer through this feature in action. Focus on showing what the feature does
+from the user’s perspective—you do not need to explain how it works yet. Keep your demo
+focused and do not attempt to showcase every feature of your project.
+Part 2 — Code Walkthrough (approximately 1.5 minutes): Open your source code
+and show the viewer exactly where the pipe or socket logic from Part 1 occurs. Walk through
+the relevant code and explain, in your own words, how it works internally—for example, how
+data flows between processes or over the network, how the pipe or socket is set up, and how
+both ends communicate. Do not read the code line by line; instead, focus on giving a clear
+conceptual explanation grounded in the actual implementation.
+Tips for Staying Within Time
+Write a script and read it out loud with a timer. If you are struggling to fit your video
+within 3 minutes, you are most likely including too much content or repeating material from
+your written report. This video should be entirely independent of your report—do
+not summarize your project background, motivation, or design decisions. Jump straight into
+the demo. A focused walkthrough of a single feature is much more valuable than a rushed
+overview of many features.
+Expectations on Video Quality
+We will not be judging your video based on its production quality. Ideally, you should record
+your video in a single take with little to no editing. Do not spend more than a few hours
+on this in total. A simple screen recording with your webcam and microphone is perfectly
+sufficient—you do not need to cut between scenes, add titles or transitions, or do anything
+beyond hitting record and walking through your demo. If you make a small mistake, just
+keep going; it is not worth re-recording over minor slip-ups.
+
+2.2 Category 2 — Client–Server Application Using Sockets
+We will cover sockets and select in week 10, so the challenge with selecting this category is
+that you will be learning about sockets while starting work on your project.
+In this category your program implements a TCP client–server application. One process
+acts as the server; one or more client processes connect over the network (or over the loopback
+interface for local testing).
+Design requirements
+• The server must handle multiple clients concurrently using a single call to select
+(or poll) inside the main event loop. Threads and fork-per-client are not permitted
+as the primary concurrency mechanism.
+• The server must never block on a single client. Reading from or writing to any one
+client must not prevent the server from servicing other clients.
+• The server must handle client disconnection gracefully: close the socket, remove it
+from the fd set, and free all associated resources.
+
+Script:
+
+[0:00 - 0:10] Opening slide
+"Hi, this is Group 55047. Team members are Aditya Menon and Aeriz Conde."
+
+[0:10 - 0:20] Scope note
+"In this demo we are focusing only on our socket-based terminal flow."
+"This branch is CLI-only and uses our POSIX socket implementation."
+"We are running everything in tmux with CLI clients."
+
+[0:20 - 1:30] Part 1: Feature Demo (user perspective)
+"I am in the project root. First I build only the CLI targets:"
+
+On-screen command:
+make cli
+
+"Now I launch our tmux session script:"
+
+On-screen command:
+./scripts/run_5_cli_clients.sh
+
+"This starts one server window and several terminal client windows. Each client is a separate process connected to the same TCP server."
+
+"I will switch between tmux windows so you can see that multiple clients are active at the same time."
+
+"Each player registers, selects Rock/Paper/Scissors, and sends a spawn location. The server then transitions the lobby and starts rounds."
+
+"Notice that all clients receive consistent live updates: joins, lobby state, round starts, pair outcomes, eliminations, and game over."
+
+"So the feature we are demonstrating is concurrent multi-client gameplay over sockets, coordinated by a single server process."
+
+[1:30 - 3:00] Part 2: Code Walkthrough (how sockets work)
+"Now I will show where the socket logic from the demo is implemented."
+
+"I will trace one concrete path: a client sends CHOICE R."
+
+"On the client side, send_line writes a newline-delimited protocol message like CHOICE R to the TCP socket."
+
+"In the server event loop, select marks that client socket as readable. The server reads raw bytes into that player's input buffer, then pop_line extracts one complete command at a time."
+
+"That complete line is passed to handle_command, which validates the request and updates server state. For join flow, CHOICE and SPAWN eventually trigger maybe_admit_player."
+
+"The server does not immediately block on send calls to every client. Instead, it queues outbound lines into per-player output buffers using queue_line."
+
+"On later iterations, select marks sockets writable, and flush_player_output sends as much as each socket can accept."
+"If one client is slow, its remaining bytes stay buffered while the server continues servicing everyone else."
+
+"That is the key non-blocking design: reads, command handling, and writes are separated, so one client cannot freeze the whole match."
+
+"For fan-out, server_state broadcasts updates such as JOINED, ROUND_START, PLAYER snapshots, and GAME_OVER by queueing messages for all connected players."
+
+"Each terminal client runs pump_network in a non-blocking loop, reads available bytes, splits them into lines, and updates local UI state from those server messages."
+
+"Disconnects are handled in the same flow: if read returns closed or write fails, the server drops that player, removes their socket from active sets, and reevaluates game state."
+
+"So the full socket data flow is: client command -> buffered server read -> command dispatch and state update -> buffered broadcast writes -> non-blocking client receive and render."
+
+[Optional final 5 seconds if time allows]
+"Thanks for watching."

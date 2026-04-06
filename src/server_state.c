@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "chase_simulation.h"
 #include "game.h"
 #include "protocol.h"
 
@@ -13,14 +14,6 @@
  * This module is responsible for phase changes, snapshots, round resolution,
  * and join/rematch lifecycle updates.
  */
-
-typedef void (*PhaseHandler)(ServerState *s);
-
-typedef struct
-{
-	Phase phase;
-	PhaseHandler handler;
-} PhaseDispatchEntry;
 
 static long seconds_left(time_t deadline)
 {
@@ -47,7 +40,6 @@ static int queue_line_checked(Player *p, const char *fmt, ...)
 
 static void queue_broadcast(ServerState *s, const char *fmt, ...)
 {
-	/* Queue to all connected clients first, then drop any sockets that overflowed. */
 	char line[MAX_LINE];
 	int to_drop[MAX_PLAYERS];
 	int drop_count = 0;
@@ -81,7 +73,6 @@ static void queue_broadcast(ServerState *s, const char *fmt, ...)
 
 static void broadcast_game_state(ServerState *s)
 {
-	/* Push a full STATE_BEGIN..STATE_END snapshot to each registered player. */
 	int dropped = 0;
 
 	for (int i = 0; i < MAX_PLAYERS; i++)
@@ -209,6 +200,30 @@ void drop_player(ServerState *s, int idx, int announce)
 	}
 }
 
+static int player_won_match(const Player *p)
+{
+	return player_is_admitted(p) && (p->alive || p->waiting);
+}
+
+static int queue_game_over_result(Player *p)
+{
+	if (!p->connected || !p->registered)
+	{
+		return 0;
+	}
+
+	if (player_won_match(p))
+	{
+		return queue_line_checked(p, "GAME_OVER WIN");
+	}
+	if (player_is_admitted(p))
+	{
+		return queue_line_checked(p, "GAME_OVER LOSE");
+	}
+
+	return queue_line_checked(p, "GAME_OVER");
+}
+
 int queue_game_state_for_player(ServerState *s, Player *dst)
 {
 	if (queue_line_checked(dst, "STATE_BEGIN") < 0)
@@ -259,17 +274,7 @@ int queue_game_state_for_player(ServerState *s, Player *dst)
 	}
 	else if (s->phase == PHASE_GAME_OVER)
 	{
-		const char *winner = "nobody";
-		for (int i = 0; i < MAX_PLAYERS; i++)
-		{
-			Player *p = &s->players[i];
-			if (player_is_alive(p))
-			{
-				winner = p->name;
-				break;
-			}
-		}
-		if (queue_line_checked(dst, "GAME_OVER %s", winner) < 0)
+		if (queue_game_over_result(dst) < 0)
 		{
 			return -1;
 		}
@@ -397,14 +402,47 @@ static void end_game(ServerState *s)
 	for (int i = 0; i < MAX_PLAYERS; i++)
 	{
 		Player *p = &s->players[i];
-		if (player_is_alive(p))
+		if (!p->connected)
 		{
-			queue_broadcast(s, "GAME_OVER %s", p->name);
-			return;
+			continue;
+		}
+
+		if (queue_game_over_result(p) < 0)
+		{
+			drop_player(s, i, 0);
+		}
+	}
+}
+
+static int count_alive_choice_types(ServerState *s)
+{
+	int has_r = 0;
+	int has_p = 0;
+	int has_s = 0;
+
+	for (int i = 0; i < MAX_PLAYERS; i++)
+	{
+		Player *p = &s->players[i];
+		if (!player_is_alive(p))
+		{
+			continue;
+		}
+
+		if (p->choice == 'R')
+		{
+			has_r = 1;
+		}
+		else if (p->choice == 'P')
+		{
+			has_p = 1;
+		}
+		else if (p->choice == 'S')
+		{
+			has_s = 1;
 		}
 	}
 
-	queue_broadcast(s, "GAME_OVER nobody");
+	return has_r + has_p + has_s;
 }
 
 static void reevaluate_lobby_open(ServerState *s)
@@ -445,7 +483,7 @@ static void reevaluate_repick(ServerState *s)
 
 static void reevaluate_round_active(ServerState *s)
 {
-	if (active_alive_count(s) <= 1)
+	if (active_alive_count(s) <= 1 || count_alive_choice_types(s) <= 1)
 	{
 		end_game(s);
 	}
@@ -453,25 +491,28 @@ static void reevaluate_round_active(ServerState *s)
 
 void reevaluate_state(ServerState *s)
 {
-	static const PhaseDispatchEntry dispatch[] = {
-		{PHASE_LOBBY_OPEN, reevaluate_lobby_open},
-		{PHASE_SETUP, reevaluate_setup},
-		{PHASE_REPICK, reevaluate_repick},
-		{PHASE_ROUND_ACTIVE, reevaluate_round_active},
-	};
-
 	if (s->phase == PHASE_GAME_OVER)
 	{
 		return;
 	}
 
-	for (size_t i = 0; i < sizeof(dispatch) / sizeof(dispatch[0]); i++)
+	switch (s->phase)
 	{
-		if (dispatch[i].phase == s->phase)
-		{
-			dispatch[i].handler(s);
-			return;
-		}
+		case PHASE_LOBBY_OPEN:
+			reevaluate_lobby_open(s);
+			break;
+		case PHASE_SETUP:
+			reevaluate_setup(s);
+			break;
+		case PHASE_REPICK:
+			reevaluate_repick(s);
+			break;
+		case PHASE_ROUND_ACTIVE:
+			reevaluate_round_active(s);
+			break;
+		case PHASE_GAME_OVER:
+		default:
+			break;
 	}
 }
 
@@ -536,6 +577,31 @@ void expire_unready_setup_players(ServerState *s)
 	if (all_admitted_ready(s))
 	{
 		start_active_round(s);
+	}
+}
+
+void advance_match_timers(ServerState *s, double now, double *last_chase_tick, double chase_tick_seconds)
+{
+	close_lobby_if_needed(s);
+	expire_unready_setup_players(s);
+
+	if (s->phase != PHASE_ROUND_ACTIVE)
+	{
+		return;
+	}
+
+	if (now - *last_chase_tick < chase_tick_seconds)
+	{
+		return;
+	}
+
+	*last_chase_tick = now;
+	int match_ended = simulate_chase_tick(s, (float)chase_tick_seconds);
+	broadcast_positions(s);
+
+	if (match_ended)
+	{
+		reevaluate_state(s);
 	}
 }
 

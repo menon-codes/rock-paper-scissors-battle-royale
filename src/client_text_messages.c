@@ -1,27 +1,25 @@
-#include "client_gui_state.h"
+#include "client_state.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "raylib.h"
-
 /*
- * GUI message parser:
- * - consumes individual server protocol lines
- * - updates GuiState projection and status text for rendering
+ * Terminal-client message parser.
+ *
+ * This parses server lines into client_text UI state.
  */
 
-typedef void (*LineParser)(GuiState *state, const char *line);
+typedef void (*LineParser)(ClientState *state, const char *line);
 
 typedef struct
 {
 	const char *token;
 	int exact;
 	LineParser parser;
-} GuiDispatchEntry;
+} DispatchEntry;
 
-static int find_player(GuiPlayer players[], const char *name)
+static int find_player(ClientPlayer players[], const char *name)
 {
 	for (int i = 0; i < MAX_PLAYERS; i++)
 	{
@@ -33,7 +31,7 @@ static int find_player(GuiPlayer players[], const char *name)
 	return -1;
 }
 
-static int get_or_add_player(GuiPlayer players[], const char *name)
+static int get_or_add_player(ClientPlayer players[], const char *name)
 {
 	int idx = find_player(players, name);
 	if (idx != -1)
@@ -55,14 +53,13 @@ static int get_or_add_player(GuiPlayer players[], const char *name)
 	return -1;
 }
 
-static void clear_gui_players(GuiPlayer players[])
+static void clear_players(ClientPlayer players[])
 {
-	memset(players, 0, sizeof(GuiPlayer) * MAX_PLAYERS);
+	memset(players, 0, sizeof(ClientPlayer) * MAX_PLAYERS);
 }
 
-static void parse_state_snapshot_line(GuiState *state, const char *line)
+static void parse_state_snapshot_line(ClientState *state, const char *line)
 {
-	/* Snapshot messages are authoritative; incremental messages are advisory UI hints. */
 	char name1[MAX_NAME_LENGTH], name2[MAX_NAME_LENGTH], winner[MAX_NAME_LENGTH];
 	char choice;
 	float x, y;
@@ -71,7 +68,7 @@ static void parse_state_snapshot_line(GuiState *state, const char *line)
 
 	if (strcmp(line, "STATE_BEGIN") == 0)
 	{
-		clear_gui_players(state->players);
+		clear_players(state->players);
 		return;
 	}
 
@@ -106,9 +103,9 @@ static void parse_state_snapshot_line(GuiState *state, const char *line)
 	if (sscanf(line, "ROUND_START %d %d", &round_no, &seconds) == 2)
 	{
 		state->repick_phase = 0;
-		state->round_end_time = GetTime() + seconds;
+		state->round_end_time = (seconds > 0) ? (rps_now_seconds() + seconds) : 0.0;
 		state->setup_end_time = 0.0;
-		snprintf(state->status_text, sizeof(state->status_text), "Round %d started", round_no);
+		snprintf(state->status_text, sizeof(state->status_text), "Match started");
 		return;
 	}
 
@@ -173,18 +170,34 @@ static void parse_state_snapshot_line(GuiState *state, const char *line)
 	if (sscanf(line, "GAME_OVER %31s", name1) == 1)
 	{
 		state->game_over = 1;
-		snprintf(state->winner_name, sizeof(state->winner_name), "%s", name1);
-		snprintf(state->status_text, sizeof(state->status_text), "Game over. Press M for rematch.");
+		state->round_end_time = 0.0;
+
+		if (strcmp(name1, "WIN") == 0)
+		{
+			state->match_result = 1;
+			snprintf(state->status_text, sizeof(state->status_text), "You won. Press M for rematch.");
+		}
+		else if (strcmp(name1, "LOSE") == 0)
+		{
+			state->match_result = -1;
+			snprintf(state->status_text, sizeof(state->status_text), "You lost. Press M for rematch.");
+		}
+		else
+		{
+			state->match_result = 0;
+			snprintf(state->status_text, sizeof(state->status_text), "Game over. Press M for rematch.");
+		}
 		return;
 	}
 }
 
-static void parse_general_line(GuiState *state, const char *line)
+static void parse_general_line(ClientState *state, const char *line)
 {
 	char name1[MAX_NAME_LENGTH];
 	char choice;
 	float x, y;
 	long sec_long;
+	int setup_seconds;
 	int id;
 
 	if (sscanf(line, "WELCOME %d", &id) == 1)
@@ -201,7 +214,7 @@ static void parse_general_line(GuiState *state, const char *line)
 
 	if (strcmp(line, "MATCH_RESET") == 0)
 	{
-		clear_gui_players(state->players);
+		clear_players(state->players);
 		state->repick_phase = 0;
 		state->game_over = 0;
 		state->can_attempt_join = 1;
@@ -212,7 +225,7 @@ static void parse_general_line(GuiState *state, const char *line)
 		state->lobby_end_time = 0.0;
 		state->setup_end_time = 0.0;
 		state->round_end_time = 0.0;
-		state->winner_name[0] = '\0';
+		state->match_result = 0;
 		snprintf(state->status_text, sizeof(state->status_text), "Match reset. You are spectating again.");
 		return;
 	}
@@ -234,7 +247,7 @@ static void parse_general_line(GuiState *state, const char *line)
 	if (sscanf(line, "LOBBY_OPEN %ld", &sec_long) == 1)
 	{
 		state->can_attempt_join = 1;
-		state->lobby_end_time = GetTime() + sec_long;
+		state->lobby_end_time = rps_now_seconds() + sec_long;
 		snprintf(state->status_text, sizeof(state->status_text), "Lobby open. Choose type and click a spawn tile.");
 		return;
 	}
@@ -247,9 +260,9 @@ static void parse_general_line(GuiState *state, const char *line)
 		return;
 	}
 
-	if (sscanf(line, "SETUP_OPEN %d", (int *)&x) == 1)
+	if (sscanf(line, "SETUP_OPEN %d", &setup_seconds) == 1)
 	{
-		state->setup_end_time = GetTime() + (int)x;
+		state->setup_end_time = rps_now_seconds() + setup_seconds;
 		snprintf(state->status_text, sizeof(state->status_text), "Setup locked. Waiting for admitted players.");
 		return;
 	}
@@ -365,7 +378,7 @@ static void parse_general_line(GuiState *state, const char *line)
 	}
 }
 
-static int line_matches(const GuiDispatchEntry *entry, const char *line)
+static int line_matches(const DispatchEntry *entry, const char *line)
 {
 	if (entry->exact)
 	{
@@ -374,9 +387,9 @@ static int line_matches(const GuiDispatchEntry *entry, const char *line)
 	return strncmp(line, entry->token, strlen(entry->token)) == 0;
 }
 
-void handle_gui_server_line(GuiState *state, const char *line)
+void handle_server_line(ClientState *state, const char *line)
 {
-	static const GuiDispatchEntry dispatch[] = {
+	static const DispatchEntry dispatch[] = {
 		{"WELCOME ", 0, parse_general_line},
 		{"MATCH_RESET", 1, parse_general_line},
 		{"SPECTATING", 1, parse_general_line},

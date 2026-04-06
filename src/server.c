@@ -3,11 +3,11 @@
 #include "protocol.h"
 
 #include <errno.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "chase_simulation.h"
 #include "server_commands.h"
 #include "server_state.h"
 
@@ -45,11 +45,7 @@ static socket_t create_listen_socket(void)
     if (listen_fd == INVALID_SOCKET)
         fatal("socket");
 
-#ifdef _WIN32
-    const char yes = 1;
-#else
     const int yes = 1;
-#endif
     if (setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&yes, sizeof(yes)) < 0)
     {
         fatal("setsockopt");
@@ -196,41 +192,9 @@ static void process_player_writes(ServerState *state, fd_set *writefds)
     }
 }
 
-static void process_timers(ServerState *state, double *last_chase_tick)
-{
-    close_lobby_if_needed(state);
-    expire_unready_setup_players(state);
-
-    /* Chase tick loop: 20 Hz = every 50ms (0.05 seconds). */
-    double now = now_seconds();
-    double elapsed = now - *last_chase_tick;
-
-    if (state->phase == PHASE_ROUND_ACTIVE && elapsed >= CHASE_TICK_SECONDS)
-    {
-        *last_chase_tick = now;
-        int match_ended = simulate_chase_tick(state, (float)CHASE_TICK_SECONDS);
-
-        /* Send updated positions after each chase tick. */
-        broadcast_positions(state);
-
-        if (match_ended)
-        {
-            /* One type remains: game over. Let reevaluate_state handle the transition. */
-            reevaluate_state(state);
-        }
-    }
-}
-
 int main(void)
 {
-#ifndef _WIN32
     signal(SIGPIPE, SIG_IGN);
-#endif
-
-    if (net_init() != 0)
-    {
-        fatal("WSAStartup");
-    }
 
     socket_t listen_fd = create_listen_socket();
     const char *auto_exit_env = getenv("RPS_TEST_AUTO_EXIT");
@@ -250,7 +214,7 @@ int main(void)
 
         struct timeval tv;
         tv.tv_sec = 0;
-        tv.tv_usec = CHASE_TICK_USEC; /* 50ms for ~20 Hz chase tick cadence. */
+        tv.tv_usec = CHASE_TICK_USEC; /* 16.667ms select timeout to match 60Hz simulation cadence. */
 
         int ready = select(maxfd + 1, &readfds, &writefds, NULL, &tv);
         if (ready < 0)
@@ -266,7 +230,7 @@ int main(void)
         }
         process_player_reads(&state, &readfds);
         process_player_writes(&state, &writefds);
-        process_timers(&state, &last_chase_tick);
+        advance_match_timers(&state, now_seconds(), &last_chase_tick, CHASE_TICK_SECONDS);
 
         if (auto_exit_for_tests && saw_client && connected_player_count(&state) == 0)
         {
@@ -275,6 +239,5 @@ int main(void)
     }
 
     CLOSESOCKET(listen_fd);
-    net_cleanup();
     return 0;
 }
