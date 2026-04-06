@@ -1,13 +1,13 @@
 {
   "configurations": [
     {
-      "name": "Win32",
+      "name": "Linux",
       "includePath": ["${workspaceFolder}/**"],
-      "defines": ["_WIN32", "_WIN64"],
-      "compilerPath": "C:/Strawberry/c/bin/gcc.exe",
+      "defines": [],
+      "compilerPath": "/usr/bin/gcc",
       "cStandard": "c17",
       "cppStandard": "c++17",
-      "intelliSenseMode": "windows-gcc-x64"
+      "intelliSenseMode": "linux-gcc-x64"
     }
   ],
   "version": 4

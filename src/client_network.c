@@ -1,4 +1,4 @@
-#include "client_gui_state.h"
+#include "client_state.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -7,19 +7,19 @@
 #include "protocol.h"
 
 /*
- * GUI networking glue:
+ * Client networking glue:
  * - initializes local UI state
  * - performs non-blocking socket draining each frame
  */
 
-void init_gui_state(GuiState *state, const char *initial_name)
+void init_client_state(ClientState *state, const char *initial_name)
 {
 	memset(state, 0, sizeof(*state));
 	snprintf(state->name_input, sizeof(state->name_input), "%s", initial_name);
 	snprintf(state->status_text, sizeof(state->status_text), "Connected");
 }
 
-void pump_network(Player *net_player, GuiState *state)
+void pump_client_network(Player *net_player, ClientState *state)
 {
 	/* Drain all currently ready data so rendering sees the newest state this frame. */
 	while (1)
@@ -55,7 +55,7 @@ void pump_network(Player *net_player, GuiState *state)
 		char line[MAX_LINE];
 		while (pop_line(net_player, line, sizeof(line)))
 		{
-			handle_gui_server_line(state, line);
+			handle_server_line(state, line);
 		}
 	}
 }

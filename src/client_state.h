@@ -1,12 +1,12 @@
-#ifndef CLIENT_GUI_STATE_H
-#define CLIENT_GUI_STATE_H
+#ifndef CLIENT_STATE_H
+#define CLIENT_STATE_H
 
 #include "common.h"
 
 /*
- * GUI-side projection of server state.
+ * Client-side projection of server state.
  *
- * GuiPlayer and GuiState intentionally mirror only fields needed for rendering
+ * ClientPlayer and ClientState intentionally mirror only fields needed for rendering
  * and input flow; they are not authoritative server truth.
  */
 
@@ -24,12 +24,12 @@ typedef struct
 	/* Admission/round visibility flags from STATE snapshot. */
 	int alive;
 	int waiting;
-} GuiPlayer;
+} ClientPlayer;
 
 typedef struct
 {
 	/* Latest STATE snapshot players. */
-	GuiPlayer players[MAX_PLAYERS];
+	ClientPlayer players[MAX_PLAYERS];
 
 	/* UI text and local input buffers. */
 	char status_text[256];
@@ -57,19 +57,19 @@ typedef struct
 	double lobby_end_time;
 	double setup_end_time;
 	double round_end_time;
-} GuiState;
+} ClientState;
 
-/* Initialize GUI state for a fresh client session. */
-void init_gui_state(GuiState *state, const char *initial_name);
+/* Initialize client state for a fresh client session. */
+void init_client_state(ClientState *state, const char *initial_name);
 
 /*
  * Client message ingress:
- * - pump_network reads from socket, extracts complete lines, and forwards each line.
- * - handle_gui_server_line parses one server message and updates GuiState.
+ * - pump_client_network reads from socket, extracts complete lines, and forwards each line.
+ * - handle_server_line parses one server message and updates ClientState.
  */
-void handle_gui_server_line(GuiState *state, const char *line);
+void handle_server_line(ClientState *state, const char *line);
 
 /* Non-blocking network pump; drains all currently available server lines. */
-void pump_network(Player *net_player, GuiState *state);
+void pump_client_network(Player *net_player, ClientState *state);
 
 #endif

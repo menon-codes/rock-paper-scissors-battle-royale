@@ -1,4 +1,4 @@
-#include "client_gui_state.h"
+#include "client_state.h"
 #include "protocol.h"
 
 #include <ctype.h>
@@ -7,7 +7,6 @@
 #include <string.h>
 #include <stdarg.h>
 
-#if !RPS_WINDOWS_SOCKETS
 #include <locale.h>
 #if defined(__has_include)
 #if __has_include(<ncursesw/ncurses.h>)
@@ -18,10 +17,9 @@
 #else
 #include <ncurses.h>
 #endif
-#endif
 
 /*
- * Full-screen terminal client that mirrors the GUI flow in a CLI environment.
+ * Full-screen terminal client.
  *
  * Controls:
  * - U: toggle name edit mode
@@ -48,8 +46,7 @@ typedef struct
     int spawn_sent;
 } AutoJoinConfig;
 
-#if !RPS_WINDOWS_SOCKETS
-static int send_command_checked(socket_t fd, GuiState *state, const char *fmt, ...)
+static int send_command_checked(socket_t fd, ClientState *state, const char *fmt, ...)
 {
     char line[MAX_LINE];
     va_list args;
@@ -83,7 +80,6 @@ static int is_valid_name_char(int c)
 {
     return isalnum(c) || c == '_';
 }
-#endif
 
 static int parse_choice_arg(const char *value, char *out_choice)
 {
@@ -124,7 +120,6 @@ static int parse_spawn_arg(const char *value, int max_exclusive, int *out)
     return 1;
 }
 
-#if !RPS_WINDOWS_SOCKETS
 static int clamp_int(int value, int min_value, int max_value)
 {
     if (value < min_value)
@@ -155,7 +150,7 @@ static const char *choice_label(char choice)
 }
 
 /* Hide all players' picks before the first ROUND_START arrives. */
-static int choices_hidden(const GuiState *state)
+static int choices_hidden(const ClientState *state)
 {
     if (state->game_over)
     {
@@ -170,7 +165,7 @@ static int choices_hidden(const GuiState *state)
     return state->round_end_time <= 0.0;
 }
 
-static char displayed_choice_char(const GuiState *state, char choice)
+static char displayed_choice_char(const ClientState *state, char choice)
 {
     if (choices_hidden(state))
     {
@@ -179,7 +174,7 @@ static char displayed_choice_char(const GuiState *state, char choice)
     return choice ? choice : '?';
 }
 
-static const char *displayed_choice_label(const GuiState *state, char choice)
+static const char *displayed_choice_label(const ClientState *state, char choice)
 {
     if (choices_hidden(state))
     {
@@ -188,7 +183,7 @@ static const char *displayed_choice_label(const GuiState *state, char choice)
     return choice_label(choice);
 }
 
-static void maybe_send_hello(socket_t fd, GuiState *state)
+static void maybe_send_hello(socket_t fd, ClientState *state)
 {
     if (state->name_registered || state->name_check_pending || state->name_input[0] == '\0')
     {
@@ -205,7 +200,7 @@ static void maybe_send_hello(socket_t fd, GuiState *state)
     snprintf(state->status_text, sizeof(state->status_text), "Checking name '%s'...", state->pending_name);
 }
 
-static void draw_grid(const GuiState *state, int top, int left, int cursor_x, int cursor_y)
+static void draw_grid(const ClientState *state, int top, int left, int cursor_x, int cursor_y)
 {
     mvprintw(top - 1, left, "Grid (%dx%d)", GRID_W, GRID_H);
 
@@ -243,7 +238,7 @@ static void draw_grid(const GuiState *state, int top, int left, int cursor_x, in
     }
 }
 
-static void draw_player_list(const GuiState *state, int top, int left, int max_rows)
+static void draw_player_list(const ClientState *state, int top, int left, int max_rows)
 {
     mvprintw(top, left, "Players");
 
@@ -263,7 +258,7 @@ static void draw_player_list(const GuiState *state, int top, int left, int max_r
     }
 }
 
-static void draw_status(const GuiState *state, int top, int left)
+static void draw_status(const ClientState *state, int top, int left)
 {
     double now = rps_now_seconds();
 
@@ -327,7 +322,7 @@ static void draw_controls(int rows, int left, int name_edit_active)
     mvprintw(base + 2, left, "Name edit: %s", name_edit_active ? "ON" : "OFF");
 }
 
-static void render_ui(const GuiState *state, int cursor_x, int cursor_y, int name_edit_active)
+static void render_ui(const ClientState *state, int cursor_x, int cursor_y, int name_edit_active)
 {
     int rows, cols;
     getmaxyx(stdscr, rows, cols);
@@ -350,7 +345,6 @@ static void render_ui(const GuiState *state, int cursor_x, int cursor_y, int nam
     draw_controls(rows, 2, name_edit_active);
     refresh();
 }
-#endif
 
 int main(int argc, char **argv)
 {
@@ -392,12 +386,6 @@ int main(int argc, char **argv)
         return 1;
     }
 
-#if RPS_WINDOWS_SOCKETS
-    (void)host;
-    (void)initial_name;
-    fprintf(stderr, "client_text ncursesw mode is not supported on Windows in this branch.\n");
-    return 1;
-#else
     if (net_init() != 0)
         fatal("WSAStartup");
 
@@ -409,8 +397,8 @@ int main(int argc, char **argv)
     memset(&net_player, 0, sizeof(net_player));
     net_player.fd = fd;
 
-    GuiState state;
-    init_gui_state(&state, initial_name);
+    ClientState state;
+    init_client_state(&state, initial_name);
     if (send_command_checked(fd, &state, "GET_STATE") == 0)
     {
         state.state_request_sent = 1;
@@ -431,7 +419,7 @@ int main(int argc, char **argv)
 
     while (running)
     {
-        pump_network(&net_player, &state);
+        pump_client_network(&net_player, &state);
 
         if (auto_join.enabled)
         {
@@ -610,5 +598,4 @@ int main(int argc, char **argv)
     CLOSESOCKET(fd);
     net_cleanup();
     return 0;
-#endif
 }

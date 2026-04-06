@@ -6,15 +6,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#if RPS_WINDOWS_SOCKETS
-#include <process.h>
-#include <windows.h>
-#else
 #include <signal.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
-#endif
 
 #ifndef PORT
 #define PORT 4242
@@ -40,30 +35,18 @@ typedef struct
 	Player io;
 } TestClient;
 
-#if RPS_WINDOWS_SOCKETS
-typedef intptr_t server_pid_t;
-#else
 typedef pid_t server_pid_t;
-#endif
 
 static void sleep_ms(int ms)
 {
-#if RPS_WINDOWS_SOCKETS
-	Sleep((DWORD)ms);
-#else
 	struct timespec ts;
 	ts.tv_sec = ms / 1000;
 	ts.tv_nsec = (long)(ms % 1000) * 1000000L;
 	nanosleep(&ts, NULL);
-#endif
 }
 
 static server_pid_t launch_server_process(void)
 {
-#if RPS_WINDOWS_SOCKETS
-	_putenv("RPS_TEST_AUTO_EXIT=1");
-	return _spawnl(_P_NOWAIT, "build/bin/server.exe", "build/bin/server.exe", NULL);
-#else
 	setenv("RPS_TEST_AUTO_EXIT", "1", 1);
 	pid_t pid = fork();
 	if (pid == 0)
@@ -72,29 +55,10 @@ static server_pid_t launch_server_process(void)
 		_exit(127);
 	}
 	return pid;
-#endif
 }
 
 static void stop_server_process(server_pid_t pid)
 {
-#if RPS_WINDOWS_SOCKETS
-	if (pid <= 0)
-	{
-		return;
-	}
-
-	HANDLE h = OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, (DWORD)pid);
-	if (h != NULL)
-	{
-		DWORD wait_rc = WaitForSingleObject(h, 2000);
-		if (wait_rc == WAIT_TIMEOUT)
-		{
-			TerminateProcess(h, 0);
-			WaitForSingleObject(h, 3000);
-		}
-		CloseHandle(h);
-	}
-#else
 	if (pid <= 0)
 	{
 		return;
@@ -113,7 +77,6 @@ static void stop_server_process(server_pid_t pid)
 
 	kill(pid, SIGTERM);
 	waitpid(pid, NULL, 0);
-#endif
 }
 
 static void init_client_io(TestClient *c)

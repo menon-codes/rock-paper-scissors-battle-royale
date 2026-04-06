@@ -1,4 +1,4 @@
-#include "client_gui_state.h"
+#include "client_state.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -7,20 +7,19 @@
 /*
  * Terminal-client message parser.
  *
- * This mirrors GUI parsing behavior without depending on raylib symbols,
- * so client_text can evolve independently of client_gui.
+ * This parses server lines into client_text UI state.
  */
 
-typedef void (*LineParser)(GuiState *state, const char *line);
+typedef void (*LineParser)(ClientState *state, const char *line);
 
 typedef struct
 {
 	const char *token;
 	int exact;
 	LineParser parser;
-} GuiDispatchEntry;
+} DispatchEntry;
 
-static int find_player(GuiPlayer players[], const char *name)
+static int find_player(ClientPlayer players[], const char *name)
 {
 	for (int i = 0; i < MAX_PLAYERS; i++)
 	{
@@ -32,7 +31,7 @@ static int find_player(GuiPlayer players[], const char *name)
 	return -1;
 }
 
-static int get_or_add_player(GuiPlayer players[], const char *name)
+static int get_or_add_player(ClientPlayer players[], const char *name)
 {
 	int idx = find_player(players, name);
 	if (idx != -1)
@@ -54,12 +53,12 @@ static int get_or_add_player(GuiPlayer players[], const char *name)
 	return -1;
 }
 
-static void clear_gui_players(GuiPlayer players[])
+static void clear_players(ClientPlayer players[])
 {
-	memset(players, 0, sizeof(GuiPlayer) * MAX_PLAYERS);
+	memset(players, 0, sizeof(ClientPlayer) * MAX_PLAYERS);
 }
 
-static void parse_state_snapshot_line(GuiState *state, const char *line)
+static void parse_state_snapshot_line(ClientState *state, const char *line)
 {
 	char name1[MAX_NAME_LENGTH], name2[MAX_NAME_LENGTH], winner[MAX_NAME_LENGTH];
 	char choice;
@@ -69,7 +68,7 @@ static void parse_state_snapshot_line(GuiState *state, const char *line)
 
 	if (strcmp(line, "STATE_BEGIN") == 0)
 	{
-		clear_gui_players(state->players);
+		clear_players(state->players);
 		return;
 	}
 
@@ -192,7 +191,7 @@ static void parse_state_snapshot_line(GuiState *state, const char *line)
 	}
 }
 
-static void parse_general_line(GuiState *state, const char *line)
+static void parse_general_line(ClientState *state, const char *line)
 {
 	char name1[MAX_NAME_LENGTH];
 	char choice;
@@ -215,7 +214,7 @@ static void parse_general_line(GuiState *state, const char *line)
 
 	if (strcmp(line, "MATCH_RESET") == 0)
 	{
-		clear_gui_players(state->players);
+		clear_players(state->players);
 		state->repick_phase = 0;
 		state->game_over = 0;
 		state->can_attempt_join = 1;
@@ -379,7 +378,7 @@ static void parse_general_line(GuiState *state, const char *line)
 	}
 }
 
-static int line_matches(const GuiDispatchEntry *entry, const char *line)
+static int line_matches(const DispatchEntry *entry, const char *line)
 {
 	if (entry->exact)
 	{
@@ -388,9 +387,9 @@ static int line_matches(const GuiDispatchEntry *entry, const char *line)
 	return strncmp(line, entry->token, strlen(entry->token)) == 0;
 }
 
-void handle_gui_server_line(GuiState *state, const char *line)
+void handle_server_line(ClientState *state, const char *line)
 {
-	static const GuiDispatchEntry dispatch[] = {
+	static const DispatchEntry dispatch[] = {
 		{"WELCOME ", 0, parse_general_line},
 		{"MATCH_RESET", 1, parse_general_line},
 		{"SPECTATING", 1, parse_general_line},

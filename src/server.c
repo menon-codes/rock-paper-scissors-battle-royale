@@ -3,9 +3,7 @@
 #include "protocol.h"
 
 #include <errno.h>
-#ifndef _WIN32
 #include <signal.h>
-#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -48,11 +46,7 @@ static socket_t create_listen_socket(void)
     if (listen_fd == INVALID_SOCKET)
         fatal("socket");
 
-#ifdef _WIN32
-    const char yes = 1;
-#else
     const int yes = 1;
-#endif
     if (setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&yes, sizeof(yes)) < 0)
     {
         fatal("setsockopt");
@@ -226,9 +220,7 @@ static void process_timers(ServerState *state, double *last_chase_tick)
 
 int main(void)
 {
-#ifndef _WIN32
     signal(SIGPIPE, SIG_IGN);
-#endif
 
     if (net_init() != 0)
     {

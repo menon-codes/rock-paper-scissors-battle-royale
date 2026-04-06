@@ -8,8 +8,8 @@ This file is the quick index for socket and message flow.
 - Server socket loop: src/server.c
 - Server command parsing (one inbound line at a time): src/server_commands.c
 - Server state machine + outbound broadcasts: src/server_state.c
-- GUI client socket pump: src/client_gui_network.c
-- GUI client line parser (one inbound line at a time): src/client_gui_messages.c
+- Client socket pump: src/client_network.c
+- Client line parser (one inbound line at a time): src/client_text_messages.c
 - Text client interactive loop: src/client_text.c
 
 ## Core Protocol Contract
@@ -32,14 +32,14 @@ This makes parsing deterministic: handlers only receive complete logical lines.
 7. Back in src/server.c, writable sockets are flushed via flush_player_output.
 8. Timer checks in src/server.c call close_lobby_if_needed, expire_unready_setup_players, and resolve_round.
 
-## GUI Client Runtime Flow
+## Client Runtime Flow
 
-1. src/client_gui.c creates socket via connect_to_server and sends initial GET_STATE.
-2. Per frame, src/client_gui.c calls pump_network in src/client_gui_network.c.
+1. src/client_text.c creates socket via connect_to_server and sends initial GET_STATE.
+2. Per frame, src/client_text.c calls pump_client_network in src/client_network.c.
 3. pump_network reads bytes and extracts lines (read_into_player_buffer + pop_line).
-4. Each line is routed to handle_gui_server_line in src/client_gui_messages.c.
-5. Parser updates GuiState (status text, player list, phase flags, timers).
-6. src/client_gui.c renders directly from GuiState.
+4. Each line is routed to handle_server_line in src/client_text_messages.c.
+5. Parser updates ClientState (status text, player list, phase flags, timers).
+6. src/client_text.c renders directly from ClientState.
 
 ## Text Client Runtime Flow
 
@@ -51,7 +51,7 @@ This makes parsing deterministic: handlers only receive complete logical lines.
 
 - Server accepts and routes client commands: src/server_commands.c
 - Server decides game phase transitions and broadcasts: src/server_state.c
-- Client interprets server messages into local UI state: src/client_gui_messages.c
+- Client interprets server messages into local UI state: src/client_text_messages.c
 - Shared wire helpers and framing live only in src/protocol.c
 
 ## How To Trace A Single Message
@@ -64,6 +64,6 @@ Example: HELLO name
 4. Handler queues responses (WELCOME, SPECTATING, etc.) using queue_line.
 5. Server flushes queued bytes on writable event.
 6. Client pump_network reads lines.
-7. handle_gui_server_line updates GuiState fields shown in UI.
+7. handle_server_line updates ClientState fields shown in UI.
 
-If you start debugging protocol behavior, begin at src/protocol.c, then follow the per-line handlers in src/server_commands.c and src/client_gui_messages.c.
+If you start debugging protocol behavior, begin at src/protocol.c, then follow the per-line handlers in src/server_commands.c and src/client_text_messages.c.
